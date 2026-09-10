@@ -1,16 +1,15 @@
 from pydantic import BaseModel, Field
-from typing import Optional
 
 
 # ============================================================
-# BUS CREATE
+# TRAIN CREATE
 # ============================================================
 
-class BusCreate(BaseModel):
+class TrainCreate(BaseModel):
 
-    operator: str
+    train_name: str
 
-    bus_number: str
+    train_number: str
 
     source: str
 
@@ -20,22 +19,38 @@ class BusCreate(BaseModel):
 
     arrival_time: str
 
-    price: int = Field(gt=0)
+    sleeper_price: int = Field(
+        gt=0
+    )
 
-    available_seats: int = Field(gt=0)
+    third_ac_price: int = Field(
+        gt=0
+    )
+
+    second_ac_price: int = Field(
+        gt=0
+    )
+
+    first_ac_price: int = Field(
+        gt=0
+    )
+
+    available_seats: int = Field(
+        gt=0
+    )
 
 
 # ============================================================
-# BUS RESPONSE
+# TRAIN RESPONSE
 # ============================================================
 
-class BusResponse(BaseModel):
+class TrainResponse(BaseModel):
 
     id: int
 
-    operator: str
+    train_name: str
 
-    bus_number: str
+    train_number: str
 
     source: str
 
@@ -45,16 +60,22 @@ class BusResponse(BaseModel):
 
     arrival_time: str
 
-    price: int
+    sleeper_price: int
+
+    third_ac_price: int
+
+    second_ac_price: int
+
+    first_ac_price: int
 
     available_seats: int
 
 
 # ============================================================
-# BUS SEARCH
+# TRAIN SEARCH
 # ============================================================
 
-class BusSearch(BaseModel):
+class TrainSearch(BaseModel):
 
     source: str
 
@@ -62,16 +83,18 @@ class BusSearch(BaseModel):
 
 
 # ============================================================
-# BUS BOOKING CREATE
+# TRAIN BOOKING
 # ============================================================
 
-class BusBookingCreate(BaseModel):
+class TrainBookingCreate(BaseModel):
 
-    bus_id: int
+    train_id: int
 
     passenger_name: str
 
     passenger_phone: str
+
+    travel_class: str
 
     seats: int = Field(
         gt=0
@@ -81,23 +104,27 @@ class BusBookingCreate(BaseModel):
 
 
 # ============================================================
-# BUS BOOKING RESPONSE
+# TRAIN BOOKING RESPONSE
 # ============================================================
 
-class BusBookingResponse(BaseModel):
+class TrainBookingResponse(BaseModel):
 
     id: int
 
     user_id: int
 
-    bus_id: int
+    train_id: int
 
     passenger_name: str
 
     passenger_phone: str
 
+    travel_class: str
+
     seats: int
 
     total_price: int
+
+    payment_method: str
 
     booking_status: str
