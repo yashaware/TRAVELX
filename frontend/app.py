@@ -1,5 +1,6 @@
 import streamlit as st
 import requests
+import pandas as pd
 from datetime import date
 
 
@@ -38,6 +39,44 @@ if "selected_bus" not in st.session_state:
 
 if "wallet_selected_amount" not in st.session_state:
     st.session_state.wallet_selected_amount = 0.0
+
+if "notification_unread_count" not in st.session_state:
+    st.session_state.notification_unread_count = 0
+# ============================================================
+# ADMIN SESSION STATE
+# ============================================================
+
+if "admin_authenticated" not in st.session_state:
+    st.session_state.admin_authenticated = False
+
+if "admin_email" not in st.session_state:
+    st.session_state.admin_email = ""
+
+if "admin_token" not in st.session_state:
+    st.session_state.admin_token = ""
+
+if "admin_edit_bus" not in st.session_state:
+    st.session_state.admin_edit_bus = None
+if "admin_edit_flight" not in st.session_state:
+    st.session_state.admin_edit_flight = None
+if "admin_edit_cab" not in st.session_state:
+    st.session_state.admin_edit_cab = None
+if "admin_edit_restaurant" not in st.session_state:
+    st.session_state.admin_edit_restaurant = None
+if "admin_edit_food_item" not in st.session_state:
+    st.session_state.admin_edit_food_item = None
+if "admin_edit_movie" not in st.session_state:
+    st.session_state.admin_edit_movie = None
+if "admin_edit_cinema" not in st.session_state:
+    st.session_state.admin_edit_cinema = None
+if "admin_edit_movie_show" not in st.session_state:
+    st.session_state.admin_edit_movie_show = None
+if "admin_edit_event" not in st.session_state:
+    st.session_state.admin_edit_event = None
+if "admin_edit_event_venue" not in st.session_state:
+    st.session_state.admin_edit_event_venue = None
+if "admin_edit_event_show" not in st.session_state:
+    st.session_state.admin_edit_event_show = None
 
 # ============================================================
 # TRAIN SESSION STATE
@@ -628,6 +667,28 @@ def api_post(endpoint, data):
         return None
 
 
+def api_patch(endpoint, data=None):
+
+    try:
+
+        response = requests.patch(
+            f"{API_URL}{endpoint}",
+            json=data or {},
+            headers=auth_headers(),
+            timeout=10
+        )
+
+        return response
+
+    except requests.exceptions.RequestException as e:
+
+        st.error(
+            f"Backend connection error: {e}"
+        )
+
+        return None
+
+
 def get_json(response):
 
     if response is None:
@@ -641,7 +702,99 @@ def get_json(response):
 
         return {}
 
+# ============================================================
+# ADMIN API HELPERS
+# ============================================================
 
+def admin_headers():
+    """
+    Headers used for all protected admin API requests.
+
+    Admin authentication is now handled through JWT.
+    """
+
+    token = st.session_state.get("admin_token", "")
+
+    if not token:
+        return {}
+
+    return {
+        "Authorization": f"Bearer {token}"
+    }
+
+
+def admin_api_get(endpoint):
+    """
+    Send authenticated GET request to an admin endpoint.
+    """
+
+    try:
+
+        response = requests.get(
+            f"{API_URL}{endpoint}",
+            headers=admin_headers(),
+            timeout=10
+        )
+
+        return response
+
+    except requests.exceptions.RequestException as e:
+
+        st.error(
+            f"Backend connection error: {e}"
+        )
+
+        return None
+
+
+def admin_api_request(
+    method,
+    endpoint,
+    data=None
+):
+    """
+    Send authenticated admin API request.
+    """
+
+    try:
+
+        response = requests.request(
+            method,
+            f"{API_URL}{endpoint}",
+            json=data,
+            headers=admin_headers(),
+            timeout=10
+        )
+
+        return response
+
+    except requests.exceptions.RequestException as e:
+
+        st.error(
+            f"Backend connection error: {e}"
+        )
+
+        return None
+
+
+def admin_error_message(
+    response,
+    fallback="Request failed."
+):
+
+    if response is None:
+        return "Backend connection failed."
+
+    try:
+
+        return response.json().get(
+            "detail",
+            fallback
+        )
+
+    except Exception:
+
+        return fallback
 # ============================================================
 # AUTH FUNCTIONS
 # ============================================================
@@ -673,11 +826,13 @@ def login_user(email, password):
         )
 
         if profile_response.status_code == 200:
+            profile_data = profile_response.json()
 
-            st.session_state.user = (
-                profile_response.json()
-            )
-
+            # Backend returns actual user information inside "user"
+            st.session_state.user = profile_data.get(
+                "user",
+                profile_data
+        )
         else:
 
             st.session_state.user = {
@@ -740,6 +895,10 @@ def register_user(
 
 def logout_user():
 
+    st.session_state.admin_authenticated = False
+    st.session_state.admin_email = ""
+    st.session_state.admin_token = ""
+
     st.session_state.token = None
 
     st.session_state.user = None
@@ -792,7 +951,7 @@ def logout_user():
 # LOGIN / REGISTER
 # ============================================================
 
-if not st.session_state.token:
+if not st.session_state.token and not st.session_state.admin_authenticated:
 
     st.html("""
     <div class="hero-box">
@@ -815,10 +974,11 @@ if not st.session_state.token:
     </div>
     """)
 
-    login_tab, register_tab = st.tabs(
+    login_tab, register_tab, admin_tab = st.tabs(
         [
             "🔐 Login",
-            "📝 Create Account"
+            "📝 Create Account",
+            "👑 Admin Portal"
         ]
     )
 
@@ -993,6 +1153,4091 @@ if not st.session_state.token:
                     "Please login."
                 )
 
+    # ========================================================
+    # ADMIN LOGIN TAB
+    # ========================================================
+
+    # ========================================================
+    # ADMIN LOGIN TAB
+    # ========================================================
+
+    with admin_tab:
+
+        st.html("""
+        <div style="
+            text-align:center;
+            padding:20px 0 25px 0;
+        ">
+            <div style="
+                font-size:54px;
+                margin-bottom:5px;
+            ">👑</div>
+
+            <div style="
+                color:#f8fafc;
+                font-size:34px;
+                font-weight:900;
+            ">
+                TRAVELX Admin
+            </div>
+
+            <div style="
+                color:#64748b;
+                font-size:14px;
+                margin-top:6px;
+            ">
+                Secure administrator access.
+            </div>
+        </div>
+        """)
+
+        admin_email_input = st.text_input(
+            "Admin Email",
+            placeholder="Enter admin email",
+            key="admin_login_email"
+        )
+
+        admin_password_input = st.text_input(
+            "Admin Password",
+            type="password",
+            placeholder="Enter admin password",
+            key="admin_login_password"
+        )
+
+        if st.button(
+            "👑 Login as Administrator",
+            type="primary",
+            use_container_width=True,
+            key="admin_login_button"
+        ):
+
+            if (
+                not admin_email_input
+                or not admin_password_input
+            ):
+
+                st.warning(
+                    "Please enter admin email and password."
+                )
+
+            else:
+
+                try:
+
+                    # ------------------------------------------------
+                    # AUTHENTICATE THROUGH NORMAL JWT LOGIN
+                    # ------------------------------------------------
+
+                    admin_login_response = requests.post(
+                        f"{API_URL}/auth/login",
+                        json={
+                            "email": admin_email_input,
+                            "password": admin_password_input
+                        },
+                        timeout=10
+                    )
+
+                    # ------------------------------------------------
+                    # LOGIN SUCCESS
+                    # ------------------------------------------------
+
+                    if admin_login_response.status_code == 200:
+
+                        login_data = admin_login_response.json()
+
+                        access_token = login_data.get(
+                            "access_token"
+                        )
+
+                        if not access_token:
+
+                            st.error(
+                                "Authentication succeeded but "
+                                "no access token was returned."
+                            )
+
+                        else:
+
+                            # ------------------------------------------------
+                            # VERIFY THAT THIS JWT REALLY HAS ADMIN ACCESS
+                            # ------------------------------------------------
+
+                            verify_response = requests.get(
+                                f"{API_URL}/admin/dashboard",
+                                headers={
+                                    "Authorization": (
+                                        f"Bearer {access_token}"
+                                    )
+                                },
+                                timeout=10
+                            )
+
+                            if verify_response.status_code == 200:
+
+                                st.session_state.admin_authenticated = True
+
+                                st.session_state.admin_email = (
+                                    admin_email_input
+                                )
+
+                                st.session_state.admin_token = (
+                                    access_token
+                                )
+
+                                st.session_state.page = (
+                                    "Admin Dashboard"
+                                )
+
+                                st.success(
+                                    "Admin login successful! 👑"
+                                )
+
+                                st.rerun()
+
+                            elif verify_response.status_code == 403:
+
+                                st.error(
+                                    "This account does not have "
+                                    "administrator privileges."
+                                )
+
+                            else:
+
+                                st.error(
+                                    "Unable to verify administrator access."
+                                )
+
+                    else:
+
+                        try:
+
+                            detail = (
+                                admin_login_response
+                                .json()
+                                .get(
+                                    "detail",
+                                    "Invalid email or password."
+                                )
+                            )
+
+                        except Exception:
+
+                            detail = (
+                                "Invalid email or password."
+                            )
+
+                        st.error(detail)
+
+                except requests.exceptions.RequestException as e:
+
+                    st.error(
+                        "Unable to connect to TRAVELX backend: "
+                        f"{e}"
+                    )
+
+
+# ============================================================
+# ADMIN DASHBOARD
+# ============================================================
+
+if st.session_state.admin_authenticated:
+
+    with st.sidebar:
+        st.html("""
+        <div class="sidebar-brand">
+            <div class="sidebar-logo">👑 TRAVELX ADMIN</div>
+            <div class="sidebar-tagline">CONTROL • ANALYZE • MANAGE</div>
+        </div>
+        """)
+
+        st.success("Administrator")
+        st.caption(st.session_state.admin_email)
+        st.divider()
+
+        if st.button(
+            "📊 Dashboard",
+            use_container_width=True,
+            key="admin_sidebar_dashboard"
+        ):
+            st.session_state.page = "Admin Dashboard"
+            st.rerun()
+
+        if st.button(
+            "🚌 Manage Buses",
+            use_container_width=True,
+            key="admin_sidebar_buses"
+        ):
+            st.session_state.page = "Admin Buses"
+            st.rerun()
+
+        if st.button(
+            "🚆 Manage Trains",
+            use_container_width=True,
+            key="admin_sidebar_trains"
+        ):
+            st.session_state.page = "Admin Trains"
+            st.rerun()
+
+        if st.button(
+            "🏨 Manage Hotels",
+            use_container_width=True,
+            key="admin_sidebar_hotels"
+        ):
+            st.session_state.page = "Admin Hotels"
+            st.rerun()
+
+        if st.button(
+            "✈️ Manage Flights",
+            use_container_width=True,
+            key="admin_sidebar_flights"
+        ):
+            st.session_state.page = "Admin Flights"
+            st.rerun()
+
+        if st.button(
+            "🚕 Manage Cabs",
+            use_container_width=True,
+            key="admin_sidebar_cabs"
+        ):
+            st.session_state.page = "Admin Cabs"
+            st.rerun()
+
+        if st.button(
+            "🍔 Manage Food",
+            use_container_width=True,
+            key="admin_sidebar_food"
+        ):
+            st.session_state.page = "Admin Food"
+            st.rerun()
+
+        if st.button(
+            "🎬 Manage Movies",
+            use_container_width=True,
+            key="admin_sidebar_movies"
+        ):
+            st.session_state.page = "Admin Movies"
+            st.rerun()
+
+        if st.button(
+            "🎟️ Manage Events",
+            use_container_width=True,
+            key="admin_sidebar_events"
+        ):
+            st.session_state.page = "Admin Events"
+            st.rerun()
+
+        if st.button(
+            "🔄 Refresh Dashboard",
+            use_container_width=True,
+            key="admin_sidebar_refresh"
+        ):
+            st.rerun()
+
+        st.divider()
+
+        if st.button(
+            "🚪 Admin Logout",
+            use_container_width=True,
+            key="admin_logout"
+        ):
+            st.session_state.admin_authenticated = False
+            st.session_state.admin_email = ""
+            st.session_state.admin_token = ""
+            st.session_state.page = "Home"
+            st.rerun()
+
+    if st.session_state.page == "Admin Buses":
+
+        st.title("🚌 Bus Management")
+        st.caption("Add, edit, inspect and delete buses from the TRAVELX admin panel.")
+        st.divider()
+
+        bus_tab1, bus_tab2, bus_tab3 = st.tabs([
+            "📋 All Buses",
+            "➕ Add Bus",
+            "✏️ Edit / Delete"
+        ])
+
+        import pandas as pd
+
+        # -----------------------------------------------------
+        # ALL BUSES
+        # -----------------------------------------------------
+        with bus_tab1:
+            col1, col2 = st.columns([5, 1])
+            with col1:
+                bus_search = st.text_input(
+                    "Search buses",
+                    placeholder="Operator, bus number, source or destination...",
+                    key="admin_bus_search"
+                )
+            with col2:
+                st.write("")
+                if st.button(
+                    "🔄 Refresh",
+                    key="admin_refresh_buses",
+                    use_container_width=True
+                ):
+                    st.rerun()
+
+            response = admin_api_get("/buses/admin/all")
+
+            if response is None:
+                st.warning("Unable to load buses.")
+            elif response.status_code == 200:
+                buses = response.json()
+
+                if bus_search.strip():
+                    term = bus_search.strip().lower()
+                    buses = [
+                        bus for bus in buses
+                        if term in str(bus.get("operator", "")).lower()
+                        or term in str(bus.get("bus_number", "")).lower()
+                        or term in str(bus.get("source", "")).lower()
+                        or term in str(bus.get("destination", "")).lower()
+                    ]
+
+                if buses:
+                    bus_df = pd.DataFrame(buses).rename(columns={
+                        "id": "Bus ID",
+                        "operator": "Operator",
+                        "bus_number": "Bus Number",
+                        "source": "Source",
+                        "destination": "Destination",
+                        "departure_time": "Departure",
+                        "arrival_time": "Arrival",
+                        "price": "Price",
+                        "available_seats": "Available Seats"
+                    })
+
+                    if "Price" in bus_df.columns:
+                        bus_df["Price"] = bus_df["Price"].apply(
+                            lambda x: f"₹{float(x):,.0f}"
+                        )
+
+                    st.dataframe(
+                        bus_df,
+                        use_container_width=True,
+                        hide_index=True
+                    )
+                    st.success(f"Showing {len(buses)} bus(es).")
+                else:
+                    st.info("No buses found.")
+            else:
+                st.error(
+                    f"Unable to load buses: "
+                    f"{admin_error_message(response, 'Request failed.')}"
+                )
+
+        # -----------------------------------------------------
+        # ADD BUS
+        # -----------------------------------------------------
+        with bus_tab2:
+            st.subheader("➕ Add New Bus")
+
+            with st.form("admin_add_bus_form"):
+                c1, c2 = st.columns(2)
+
+                with c1:
+                    operator = st.text_input("Operator", placeholder="TSRTC")
+                    bus_number = st.text_input("Bus Number", placeholder="TS09AB1234")
+                    source = st.text_input("Source", placeholder="Hyderabad")
+                    destination = st.text_input("Destination", placeholder="Bangalore")
+
+                with c2:
+                    departure_time = st.text_input("Departure Time", placeholder="08:00 AM")
+                    arrival_time = st.text_input("Arrival Time", placeholder="04:00 PM")
+                    price = st.number_input("Price (₹)", min_value=1, value=500, step=50)
+                    available_seats = st.number_input(
+                        "Available Seats",
+                        min_value=1,
+                        value=40,
+                        step=1
+                    )
+
+                submitted = st.form_submit_button(
+                    "🚀 Create Bus",
+                    type="primary",
+                    use_container_width=True
+                )
+
+            if submitted:
+                if not all([
+                    operator.strip(),
+                    bus_number.strip(),
+                    source.strip(),
+                    destination.strip(),
+                    departure_time.strip(),
+                    arrival_time.strip()
+                ]):
+                    st.warning("Please fill all bus fields.")
+                else:
+                    payload = {
+                        "operator": operator.strip(),
+                        "bus_number": bus_number.strip(),
+                        "source": source.strip(),
+                        "destination": destination.strip(),
+                        "departure_time": departure_time.strip(),
+                        "arrival_time": arrival_time.strip(),
+                        "price": int(price),
+                        "available_seats": int(available_seats)
+                    }
+
+                    response = admin_api_request(
+                        "POST",
+                        "/buses/admin/create",
+                        payload
+                    )
+
+                    if response is not None and response.status_code in [200, 201]:
+                        st.success("Bus created successfully! 🚌")
+                        st.rerun()
+                    else:
+                        st.error(
+                            admin_error_message(
+                                response,
+                                "Unable to create bus."
+                            )
+                        )
+
+        # -----------------------------------------------------
+        # EDIT / DELETE BUS
+        # -----------------------------------------------------
+        with bus_tab3:
+            st.subheader("✏️ Edit or Delete Bus")
+
+            bus_id = st.number_input(
+                "Bus ID",
+                min_value=1,
+                value=1,
+                step=1,
+                key="admin_edit_bus_id"
+            )
+
+            load_col, delete_col = st.columns(2)
+
+            with load_col:
+                load_bus = st.button(
+                    "🔎 Load Bus",
+                    use_container_width=True,
+                    key="admin_load_bus"
+                )
+
+            with delete_col:
+                delete_bus = st.button(
+                    "🗑️ Delete Bus",
+                    use_container_width=True,
+                    key="admin_delete_bus",
+                    type="secondary"
+                )
+
+            if load_bus:
+                response = admin_api_get(
+                    f"/buses/admin/{int(bus_id)}"
+                )
+
+                if response is not None and response.status_code == 200:
+                    st.session_state.admin_edit_bus = response.json()
+                else:
+                    st.session_state.admin_edit_bus = None
+                    st.error(
+                        admin_error_message(
+                            response,
+                            "Bus not found."
+                        )
+                    )
+
+            bus_data = st.session_state.get("admin_edit_bus")
+
+            if bus_data:
+                st.info(
+                    f"Editing Bus #{bus_data.get('id')} — "
+                    f"{bus_data.get('operator', '')} / "
+                    f"{bus_data.get('bus_number', '')}"
+                )
+
+                with st.form("admin_edit_bus_form"):
+                    e1, e2 = st.columns(2)
+
+                    with e1:
+                        edit_operator = st.text_input(
+                            "Operator",
+                            value=str(bus_data.get("operator", "")),
+                            key="edit_bus_operator"
+                        )
+                        edit_bus_number = st.text_input(
+                            "Bus Number",
+                            value=str(bus_data.get("bus_number", "")),
+                            key="edit_bus_number"
+                        )
+                        edit_source = st.text_input(
+                            "Source",
+                            value=str(bus_data.get("source", "")),
+                            key="edit_bus_source"
+                        )
+                        edit_destination = st.text_input(
+                            "Destination",
+                            value=str(bus_data.get("destination", "")),
+                            key="edit_bus_destination"
+                        )
+
+                    with e2:
+                        edit_departure = st.text_input(
+                            "Departure Time",
+                            value=str(bus_data.get("departure_time", "")),
+                            key="edit_bus_departure"
+                        )
+                        edit_arrival = st.text_input(
+                            "Arrival Time",
+                            value=str(bus_data.get("arrival_time", "")),
+                            key="edit_bus_arrival"
+                        )
+                        edit_price = st.number_input(
+                            "Price (₹)",
+                            min_value=1,
+                            value=int(bus_data.get("price", 1)),
+                            step=50,
+                            key="edit_bus_price"
+                        )
+                        edit_seats = st.number_input(
+                            "Available Seats",
+                            min_value=1,
+                            value=max(1, int(bus_data.get("available_seats", 1))),
+                            step=1,
+                            key="edit_bus_seats"
+                        )
+
+                    update_bus = st.form_submit_button(
+                        "💾 Save Changes",
+                        type="primary",
+                        use_container_width=True
+                    )
+
+                if update_bus:
+                    payload = {
+                        "operator": edit_operator.strip(),
+                        "bus_number": edit_bus_number.strip(),
+                        "source": edit_source.strip(),
+                        "destination": edit_destination.strip(),
+                        "departure_time": edit_departure.strip(),
+                        "arrival_time": edit_arrival.strip(),
+                        "price": int(edit_price),
+                        "available_seats": int(edit_seats)
+                    }
+
+                    if not all([
+                        payload["operator"],
+                        payload["bus_number"],
+                        payload["source"],
+                        payload["destination"],
+                        payload["departure_time"],
+                        payload["arrival_time"]
+                    ]):
+                        st.warning("Please fill all bus fields.")
+                    else:
+                        response = admin_api_request(
+                            "PUT",
+                            f"/buses/admin/{int(bus_id)}",
+                            payload
+                        )
+
+                        if response is not None and response.status_code == 200:
+                            st.success("Bus updated successfully! ✅")
+                            st.session_state.admin_edit_bus = response.json()
+                            st.rerun()
+                        else:
+                            st.error(
+                                admin_error_message(
+                                    response,
+                                    "Unable to update bus."
+                                )
+                            )
+
+            if delete_bus:
+                response = admin_api_request(
+                    "DELETE",
+                    f"/buses/admin/{int(bus_id)}"
+                )
+
+                if response is not None and response.status_code == 200:
+                    st.success("Bus deleted successfully! 🗑️")
+                    st.session_state.admin_edit_bus = None
+                    st.rerun()
+                else:
+                    st.error(
+                        admin_error_message(
+                            response,
+                            "Unable to delete bus."
+                        )
+                    )
+
+    elif st.session_state.page == "Admin Trains":
+        st.title("🚆 Train Management")
+        st.caption("Add, edit, inspect and delete trains from the TRAVELX admin panel.")
+        st.divider()
+
+        train_tab1, train_tab2, train_tab3 = st.tabs([
+            "📋 All Trains",
+            "➕ Add Train",
+            "✏️ Edit / Delete"
+        ])
+
+        import pandas as pd
+
+        # -----------------------------------------------------
+        # ALL TRAINS
+        # -----------------------------------------------------
+        with train_tab1:
+            col1, col2 = st.columns([5, 1])
+            with col1:
+                train_search = st.text_input(
+                    "Search trains",
+                    placeholder="Train name, number, source or destination...",
+                    key="admin_train_search"
+                )
+            with col2:
+                st.write("")
+                if st.button(
+                    "🔄 Refresh",
+                    key="admin_refresh_trains",
+                    use_container_width=True
+                ):
+                    st.rerun()
+
+            response = admin_api_get("/trains/admin/all")
+
+            if response is None:
+                st.warning("Unable to load trains.")
+            elif response.status_code == 200:
+                trains = response.json()
+
+                if train_search.strip():
+                    term = train_search.strip().lower()
+                    trains = [
+                        train for train in trains
+                        if term in str(train.get("train_name", "")).lower()
+                        or term in str(train.get("train_number", "")).lower()
+                        or term in str(train.get("source", "")).lower()
+                        or term in str(train.get("destination", "")).lower()
+                    ]
+
+                if trains:
+                    train_df = pd.DataFrame(trains).rename(columns={
+                        "id": "Train ID",
+                        "train_name": "Train Name",
+                        "train_number": "Train Number",
+                        "source": "Source",
+                        "destination": "Destination",
+                        "departure_time": "Departure",
+                        "arrival_time": "Arrival",
+                        "sleeper_price": "Sleeper",
+                        "third_ac_price": "3A",
+                        "second_ac_price": "2A",
+                        "first_ac_price": "1A",
+                        "available_seats": "Available Seats"
+                    })
+
+                    for column in ["Sleeper", "3A", "2A", "1A"]:
+                        if column in train_df.columns:
+                            train_df[column] = train_df[column].apply(
+                                lambda x: f"₹{float(x):,.0f}"
+                            )
+
+                    st.dataframe(
+                        train_df,
+                        use_container_width=True,
+                        hide_index=True
+                    )
+                    st.success(f"Showing {len(trains)} train(s).")
+                else:
+                    st.info("No trains found.")
+            else:
+                st.error(
+                    f"Unable to load trains: "
+                    f"{admin_error_message(response, 'Request failed.')}"
+                )
+
+        # -----------------------------------------------------
+        # ADD TRAIN
+        # -----------------------------------------------------
+        with train_tab2:
+            st.subheader("➕ Add New Train")
+
+            with st.form("admin_add_train_form"):
+                c1, c2 = st.columns(2)
+
+                with c1:
+                    train_name = st.text_input(
+                        "Train Name",
+                        placeholder="Hyderabad Express"
+                    )
+                    train_number = st.text_input(
+                        "Train Number",
+                        placeholder="12727"
+                    )
+                    source = st.text_input(
+                        "Source",
+                        placeholder="Hyderabad"
+                    )
+                    destination = st.text_input(
+                        "Destination",
+                        placeholder="Visakhapatnam"
+                    )
+                    departure_time = st.text_input(
+                        "Departure Time",
+                        placeholder="06:30 AM"
+                    )
+                    arrival_time = st.text_input(
+                        "Arrival Time",
+                        placeholder="02:30 PM"
+                    )
+
+                with c2:
+                    sleeper_price = st.number_input(
+                        "Sleeper Price (₹)",
+                        min_value=1,
+                        value=500,
+                        step=50
+                    )
+                    third_ac_price = st.number_input(
+                        "3A Price (₹)",
+                        min_value=1,
+                        value=1200,
+                        step=50
+                    )
+                    second_ac_price = st.number_input(
+                        "2A Price (₹)",
+                        min_value=1,
+                        value=1800,
+                        step=50
+                    )
+                    first_ac_price = st.number_input(
+                        "1A Price (₹)",
+                        min_value=1,
+                        value=2500,
+                        step=50
+                    )
+                    available_seats = st.number_input(
+                        "Available Seats",
+                        min_value=1,
+                        value=100,
+                        step=1
+                    )
+
+                submitted = st.form_submit_button(
+                    "🚀 Create Train",
+                    type="primary",
+                    use_container_width=True
+                )
+
+            if submitted:
+                if not all([
+                    train_name.strip(),
+                    train_number.strip(),
+                    source.strip(),
+                    destination.strip(),
+                    departure_time.strip(),
+                    arrival_time.strip()
+                ]):
+                    st.warning("Please fill all train fields.")
+                else:
+                    payload = {
+                        "train_name": train_name.strip(),
+                        "train_number": train_number.strip(),
+                        "source": source.strip(),
+                        "destination": destination.strip(),
+                        "departure_time": departure_time.strip(),
+                        "arrival_time": arrival_time.strip(),
+                        "sleeper_price": int(sleeper_price),
+                        "third_ac_price": int(third_ac_price),
+                        "second_ac_price": int(second_ac_price),
+                        "first_ac_price": int(first_ac_price),
+                        "available_seats": int(available_seats)
+                    }
+
+                    response = admin_api_request(
+                        "POST",
+                        "/trains/admin/create",
+                        payload
+                    )
+
+                    if response is not None and response.status_code in [200, 201]:
+                        st.success("Train created successfully! 🚆")
+                        st.rerun()
+                    else:
+                        st.error(
+                            admin_error_message(
+                                response,
+                                "Unable to create train."
+                            )
+                        )
+
+        # -----------------------------------------------------
+        # EDIT / DELETE TRAIN
+        # -----------------------------------------------------
+        with train_tab3:
+            st.subheader("✏️ Edit or Delete Train")
+
+            train_id = st.number_input(
+                "Train ID",
+                min_value=1,
+                value=1,
+                step=1,
+                key="admin_edit_train_id"
+            )
+
+            load_col, delete_col = st.columns(2)
+
+            with load_col:
+                load_train = st.button(
+                    "🔎 Load Train",
+                    use_container_width=True,
+                    key="admin_load_train"
+                )
+
+            with delete_col:
+                delete_train = st.button(
+                    "🗑️ Delete Train",
+                    use_container_width=True,
+                    key="admin_delete_train"
+                )
+
+            if load_train:
+                response = admin_api_get(
+                    f"/trains/admin/{int(train_id)}"
+                )
+
+                if response is not None and response.status_code == 200:
+                    st.session_state.admin_edit_train = response.json()
+                else:
+                    st.session_state.admin_edit_train = None
+                    st.error(
+                        admin_error_message(
+                            response,
+                            "Train not found."
+                        )
+                    )
+
+            train_data = st.session_state.get("admin_edit_train")
+
+            if train_data:
+                st.info(
+                    f"Editing Train #{train_data.get('id')} — "
+                    f"{train_data.get('train_name', '')} / "
+                    f"{train_data.get('train_number', '')}"
+                )
+
+                with st.form("admin_edit_train_form"):
+                    e1, e2 = st.columns(2)
+
+                    with e1:
+                        edit_train_name = st.text_input(
+                            "Train Name",
+                            value=str(train_data.get("train_name", "")),
+                            key="edit_train_name"
+                        )
+                        edit_train_number = st.text_input(
+                            "Train Number",
+                            value=str(train_data.get("train_number", "")),
+                            key="edit_train_number"
+                        )
+                        edit_source = st.text_input(
+                            "Source",
+                            value=str(train_data.get("source", "")),
+                            key="edit_train_source"
+                        )
+                        edit_destination = st.text_input(
+                            "Destination",
+                            value=str(train_data.get("destination", "")),
+                            key="edit_train_destination"
+                        )
+                        edit_departure = st.text_input(
+                            "Departure Time",
+                            value=str(train_data.get("departure_time", "")),
+                            key="edit_train_departure"
+                        )
+                        edit_arrival = st.text_input(
+                            "Arrival Time",
+                            value=str(train_data.get("arrival_time", "")),
+                            key="edit_train_arrival"
+                        )
+
+                    with e2:
+                        edit_sleeper = st.number_input(
+                            "Sleeper Price (₹)",
+                            min_value=1,
+                            value=int(train_data.get("sleeper_price", 1)),
+                            step=50,
+                            key="edit_train_sleeper"
+                        )
+                        edit_third_ac = st.number_input(
+                            "3A Price (₹)",
+                            min_value=1,
+                            value=int(train_data.get("third_ac_price", 1)),
+                            step=50,
+                            key="edit_train_3a"
+                        )
+                        edit_second_ac = st.number_input(
+                            "2A Price (₹)",
+                            min_value=1,
+                            value=int(train_data.get("second_ac_price", 1)),
+                            step=50,
+                            key="edit_train_2a"
+                        )
+                        edit_first_ac = st.number_input(
+                            "1A Price (₹)",
+                            min_value=1,
+                            value=int(train_data.get("first_ac_price", 1)),
+                            step=50,
+                            key="edit_train_1a"
+                        )
+                        edit_seats = st.number_input(
+                            "Available Seats",
+                            min_value=1,
+                            value=max(1, int(train_data.get("available_seats", 1))),
+                            step=1,
+                            key="edit_train_seats"
+                        )
+
+                    update_train = st.form_submit_button(
+                        "💾 Save Changes",
+                        type="primary",
+                        use_container_width=True
+                    )
+
+                if update_train:
+                    payload = {
+                        "train_name": edit_train_name.strip(),
+                        "train_number": edit_train_number.strip(),
+                        "source": edit_source.strip(),
+                        "destination": edit_destination.strip(),
+                        "departure_time": edit_departure.strip(),
+                        "arrival_time": edit_arrival.strip(),
+                        "sleeper_price": int(edit_sleeper),
+                        "third_ac_price": int(edit_third_ac),
+                        "second_ac_price": int(edit_second_ac),
+                        "first_ac_price": int(edit_first_ac),
+                        "available_seats": int(edit_seats)
+                    }
+
+                    if not all([
+                        payload["train_name"],
+                        payload["train_number"],
+                        payload["source"],
+                        payload["destination"],
+                        payload["departure_time"],
+                        payload["arrival_time"]
+                    ]):
+                        st.warning("Please fill all train fields.")
+                    else:
+                        response = admin_api_request(
+                            "PUT",
+                            f"/trains/admin/{int(train_id)}",
+                            payload
+                        )
+
+                        if response is not None and response.status_code == 200:
+                            st.success("Train updated successfully! ✅")
+                            st.session_state.admin_edit_train = response.json()
+                            st.rerun()
+                        else:
+                            st.error(
+                                admin_error_message(
+                                    response,
+                                    "Unable to update train."
+                                )
+                            )
+
+            if delete_train:
+                response = admin_api_request(
+                    "DELETE",
+                    f"/trains/admin/{int(train_id)}"
+                )
+
+                if response is not None and response.status_code == 200:
+                    st.success("Train deleted successfully! 🗑️")
+                    st.session_state.admin_edit_train = None
+                    st.rerun()
+                else:
+                    st.error(
+                        admin_error_message(
+                            response,
+                            "Unable to delete train."
+                        )
+                    )
+
+    elif st.session_state.page == "Admin Hotels":
+
+        st.title("🏨 Hotel Management")
+        st.caption("Add, edit, inspect and delete hotels from the TRAVELX admin panel.")
+        st.divider()
+
+        hotel_tab1, hotel_tab2, hotel_tab3 = st.tabs([
+            "📋 All Hotels",
+            "➕ Add Hotel",
+            "✏️ Edit / Delete"
+        ])
+
+        import pandas as pd
+
+        # -----------------------------------------------------
+        # ALL HOTELS
+        # -----------------------------------------------------
+        with hotel_tab1:
+            col1, col2 = st.columns([5, 1])
+            with col1:
+                hotel_search = st.text_input(
+                    "Search hotels",
+                    placeholder="Name, city, address or amenities...",
+                    key="admin_hotel_search"
+                )
+            with col2:
+                st.write("")
+                if st.button(
+                    "🔄 Refresh",
+                    key="admin_refresh_hotels",
+                    use_container_width=True
+                ):
+                    st.rerun()
+
+            response = admin_api_get("/hotels/admin/all")
+
+            if response is None:
+                st.warning("Unable to load hotels.")
+            elif response.status_code == 200:
+                hotels = response.json()
+
+                if hotel_search.strip():
+                    term = hotel_search.strip().lower()
+                    hotels = [
+                        hotel for hotel in hotels
+                        if term in str(hotel.get("name", "")).lower()
+                        or term in str(hotel.get("city", "")).lower()
+                        or term in str(hotel.get("address", "")).lower()
+                        or term in str(hotel.get("amenities", "")).lower()
+                    ]
+
+                if hotels:
+                    hotel_df = pd.DataFrame(hotels).rename(columns={
+                        "id": "Hotel ID",
+                        "name": "Hotel Name",
+                        "city": "City",
+                        "address": "Address",
+                        "description": "Description",
+                        "rating": "Rating",
+                        "price_per_night": "Price/Night",
+                        "available_rooms": "Available Rooms",
+                        "amenities": "Amenities"
+                    })
+
+                    if "Price/Night" in hotel_df.columns:
+                        hotel_df["Price/Night"] = hotel_df["Price/Night"].apply(
+                            lambda x: f"₹{float(x):,.0f}"
+                        )
+
+                    st.dataframe(
+                        hotel_df,
+                        use_container_width=True,
+                        hide_index=True
+                    )
+                    st.success(f"Showing {len(hotels)} hotel(s).")
+                else:
+                    st.info("No hotels found.")
+            else:
+                st.error(
+                    f"Unable to load hotels: "
+                    f"{admin_error_message(response, 'Request failed.')}"
+                )
+
+        # -----------------------------------------------------
+        # ADD HOTEL
+        # -----------------------------------------------------
+        with hotel_tab2:
+            st.subheader("➕ Add New Hotel")
+
+            with st.form("admin_add_hotel_form"):
+                c1, c2 = st.columns(2)
+
+                with c1:
+                    hotel_name = st.text_input(
+                        "Hotel Name",
+                        placeholder="TRAVELX Grand Hotel"
+                    )
+                    hotel_city = st.text_input(
+                        "City",
+                        placeholder="Hyderabad"
+                    )
+                    hotel_address = st.text_input(
+                        "Address",
+                        placeholder="Banjara Hills, Hyderabad"
+                    )
+                    hotel_rating = st.number_input(
+                        "Rating",
+                        min_value=0.0,
+                        max_value=5.0,
+                        value=4.0,
+                        step=0.1,
+                        format="%.1f"
+                    )
+
+                with c2:
+                    hotel_description = st.text_area(
+                        "Description",
+                        placeholder="Comfortable rooms with modern facilities...",
+                        height=120
+                    )
+                    hotel_price = st.number_input(
+                        "Price Per Night (₹)",
+                        min_value=1,
+                        value=2500,
+                        step=100
+                    )
+                    hotel_rooms = st.number_input(
+                        "Available Rooms",
+                        min_value=1,
+                        value=20,
+                        step=1
+                    )
+                    hotel_amenities = st.text_input(
+                        "Amenities",
+                        placeholder="WiFi, Pool, Breakfast, Parking"
+                    )
+
+                submitted = st.form_submit_button(
+                    "🚀 Create Hotel",
+                    type="primary",
+                    use_container_width=True
+                )
+
+            if submitted:
+                if not all([
+                    hotel_name.strip(),
+                    hotel_city.strip(),
+                    hotel_address.strip(),
+                    hotel_description.strip(),
+                    hotel_amenities.strip()
+                ]):
+                    st.warning("Please fill all hotel fields.")
+                else:
+                    payload = {
+                        "name": hotel_name.strip(),
+                        "city": hotel_city.strip(),
+                        "address": hotel_address.strip(),
+                        "description": hotel_description.strip(),
+                        "rating": float(hotel_rating),
+                        "price_per_night": int(hotel_price),
+                        "available_rooms": int(hotel_rooms),
+                        "amenities": hotel_amenities.strip()
+                    }
+
+                    response = admin_api_request(
+                        "POST",
+                        "/hotels/admin/create",
+                        payload
+                    )
+
+                    if response is not None and response.status_code in [200, 201]:
+                        st.success("Hotel created successfully! 🏨")
+                        st.rerun()
+                    else:
+                        st.error(
+                            admin_error_message(
+                                response,
+                                "Unable to create hotel."
+                            )
+                        )
+
+        # -----------------------------------------------------
+        # EDIT / DELETE HOTEL
+        # -----------------------------------------------------
+        with hotel_tab3:
+            st.subheader("✏️ Edit or Delete Hotel")
+
+            hotel_id = st.number_input(
+                "Hotel ID",
+                min_value=1,
+                value=1,
+                step=1,
+                key="admin_edit_hotel_id"
+            )
+
+            load_col, delete_col = st.columns(2)
+
+            with load_col:
+                load_hotel = st.button(
+                    "🔎 Load Hotel",
+                    use_container_width=True,
+                    key="admin_load_hotel"
+                )
+
+            with delete_col:
+                delete_hotel = st.button(
+                    "🗑️ Delete Hotel",
+                    use_container_width=True,
+                    key="admin_delete_hotel"
+                )
+
+            if load_hotel:
+                response = admin_api_get(
+                    f"/hotels/admin/{int(hotel_id)}"
+                )
+
+                if response is not None and response.status_code == 200:
+                    st.session_state.admin_edit_hotel = response.json()
+                else:
+                    st.session_state.admin_edit_hotel = None
+                    st.error(
+                        admin_error_message(
+                            response,
+                            "Hotel not found."
+                        )
+                    )
+
+            hotel_data = st.session_state.get("admin_edit_hotel")
+
+            if hotel_data:
+                st.info(
+                    f"Editing Hotel #{hotel_data.get('id')} — "
+                    f"{hotel_data.get('name', '')} / "
+                    f"{hotel_data.get('city', '')}"
+                )
+
+                with st.form("admin_edit_hotel_form"):
+                    e1, e2 = st.columns(2)
+
+                    with e1:
+                        edit_hotel_name = st.text_input(
+                            "Hotel Name",
+                            value=str(hotel_data.get("name", "")),
+                            key="edit_hotel_name"
+                        )
+                        edit_hotel_city = st.text_input(
+                            "City",
+                            value=str(hotel_data.get("city", "")),
+                            key="edit_hotel_city"
+                        )
+                        edit_hotel_address = st.text_input(
+                            "Address",
+                            value=str(hotel_data.get("address", "")),
+                            key="edit_hotel_address"
+                        )
+                        edit_hotel_rating = st.number_input(
+                            "Rating",
+                            min_value=0.0,
+                            max_value=5.0,
+                            value=float(hotel_data.get("rating", 0)),
+                            step=0.1,
+                            format="%.1f",
+                            key="edit_hotel_rating"
+                        )
+
+                    with e2:
+                        edit_hotel_description = st.text_area(
+                            "Description",
+                            value=str(hotel_data.get("description", "")),
+                            height=120,
+                            key="edit_hotel_description"
+                        )
+                        edit_hotel_price = st.number_input(
+                            "Price Per Night (₹)",
+                            min_value=1,
+                            value=max(1, int(hotel_data.get("price_per_night", 1))),
+                            step=100,
+                            key="edit_hotel_price"
+                        )
+                        edit_hotel_rooms = st.number_input(
+                            "Available Rooms",
+                            min_value=1,
+                            value=max(1, int(hotel_data.get("available_rooms", 1))),
+                            step=1,
+                            key="edit_hotel_rooms"
+                        )
+                        edit_hotel_amenities = st.text_input(
+                            "Amenities",
+                            value=str(hotel_data.get("amenities", "")),
+                            key="edit_hotel_amenities"
+                        )
+
+                    update_hotel = st.form_submit_button(
+                        "💾 Save Changes",
+                        type="primary",
+                        use_container_width=True
+                    )
+
+                if update_hotel:
+                    payload = {
+                        "name": edit_hotel_name.strip(),
+                        "city": edit_hotel_city.strip(),
+                        "address": edit_hotel_address.strip(),
+                        "description": edit_hotel_description.strip(),
+                        "rating": float(edit_hotel_rating),
+                        "price_per_night": int(edit_hotel_price),
+                        "available_rooms": int(edit_hotel_rooms),
+                        "amenities": edit_hotel_amenities.strip()
+                    }
+
+                    if not all([
+                        payload["name"],
+                        payload["city"],
+                        payload["address"],
+                        payload["description"],
+                        payload["amenities"]
+                    ]):
+                        st.warning("Please fill all hotel fields.")
+                    else:
+                        response = admin_api_request(
+                            "PUT",
+                            f"/hotels/admin/{int(hotel_id)}",
+                            payload
+                        )
+
+                        if response is not None and response.status_code == 200:
+                            st.success("Hotel updated successfully! ✅")
+                            st.session_state.admin_edit_hotel = response.json()
+                            st.rerun()
+                        else:
+                            st.error(
+                                admin_error_message(
+                                    response,
+                                    "Unable to update hotel."
+                                )
+                            )
+
+            if delete_hotel:
+                response = admin_api_request(
+                    "DELETE",
+                    f"/hotels/admin/{int(hotel_id)}"
+                )
+
+                if response is not None and response.status_code == 200:
+                    st.success("Hotel deleted successfully! 🗑️")
+                    st.session_state.admin_edit_hotel = None
+                    st.rerun()
+                else:
+                    st.error(
+                        admin_error_message(
+                            response,
+                            "Unable to delete hotel."
+                        )
+                    )
+
+    elif st.session_state.page == "Admin Flights":
+
+        st.title("✈️ Flight Management")
+        st.caption("Add, edit, inspect and delete flights from the TRAVELX admin panel.")
+        st.divider()
+
+        flight_tab1, flight_tab2, flight_tab3 = st.tabs([
+            "📋 All Flights",
+            "➕ Add Flight",
+            "✏️ Edit / Delete"
+        ])
+
+        # -----------------------------------------------------
+        # ALL FLIGHTS
+        # -----------------------------------------------------
+        with flight_tab1:
+            col1, col2 = st.columns([5, 1])
+
+            with col1:
+                flight_search = st.text_input(
+                    "Search flights",
+                    placeholder="Airline, flight number, source or destination...",
+                    key="admin_flight_search"
+                )
+
+            with col2:
+                st.write("")
+                if st.button(
+                    "🔄 Refresh",
+                    key="admin_refresh_flights",
+                    use_container_width=True
+                ):
+                    st.rerun()
+
+            response = admin_api_get("/flights/admin/all")
+
+            if response is None:
+                st.warning("Unable to load flights.")
+            elif response.status_code == 200:
+                flights = response.json()
+
+                if flight_search.strip():
+                    term = flight_search.strip().lower()
+                    flights = [
+                        flight for flight in flights
+                        if term in str(flight.get("airline", "")).lower()
+                        or term in str(flight.get("flight_number", "")).lower()
+                        or term in str(flight.get("source", "")).lower()
+                        or term in str(flight.get("destination", "")).lower()
+                    ]
+
+                if flights:
+                    flight_df = pd.DataFrame(flights).rename(columns={
+                        "id": "Flight ID",
+                        "flight_number": "Flight Number",
+                        "airline": "Airline",
+                        "source": "Source",
+                        "destination": "Destination",
+                        "departure_time": "Departure",
+                        "arrival_time": "Arrival",
+                        "economy_price": "Economy Price",
+                        "premium_economy_price": "Premium Economy",
+                        "business_price": "Business Price",
+                        "available_seats": "Available Seats"
+                    })
+
+                    for column in ["Economy Price", "Premium Economy", "Business Price"]:
+                        if column in flight_df.columns:
+                            flight_df[column] = flight_df[column].apply(
+                                lambda x: f"₹{float(x):,.0f}"
+                            )
+
+                    st.dataframe(
+                        flight_df,
+                        use_container_width=True,
+                        hide_index=True
+                    )
+                    st.success(f"Showing {len(flights)} flight(s).")
+                else:
+                    st.info("No flights found.")
+            else:
+                st.error(
+                    f"Unable to load flights: "
+                    f"{admin_error_message(response, 'Request failed.')}"
+                )
+
+        # -----------------------------------------------------
+        # ADD FLIGHT
+        # -----------------------------------------------------
+        with flight_tab2:
+            st.subheader("➕ Add New Flight")
+
+            with st.form("admin_add_flight_form"):
+                c1, c2 = st.columns(2)
+
+                with c1:
+                    flight_number = st.text_input(
+                        "Flight Number",
+                        placeholder="6E123"
+                    )
+                    airline = st.text_input(
+                        "Airline",
+                        placeholder="IndiGo"
+                    )
+                    source = st.text_input(
+                        "Source",
+                        placeholder="Hyderabad"
+                    )
+                    destination = st.text_input(
+                        "Destination",
+                        placeholder="Delhi"
+                    )
+                    departure_time = st.text_input(
+                        "Departure Time",
+                        placeholder="08:30 AM"
+                    )
+                    arrival_time = st.text_input(
+                        "Arrival Time",
+                        placeholder="10:45 AM"
+                    )
+
+                with c2:
+                    economy_price = st.number_input(
+                        "Economy Price (₹)",
+                        min_value=1,
+                        value=4500,
+                        step=100
+                    )
+                    premium_economy_price = st.number_input(
+                        "Premium Economy Price (₹)",
+                        min_value=1,
+                        value=6500,
+                        step=100
+                    )
+                    business_price = st.number_input(
+                        "Business Price (₹)",
+                        min_value=1,
+                        value=9500,
+                        step=100
+                    )
+                    available_seats = st.number_input(
+                        "Available Seats",
+                        min_value=1,
+                        value=120,
+                        step=1
+                    )
+
+                submitted = st.form_submit_button(
+                    "🚀 Create Flight",
+                    type="primary",
+                    use_container_width=True
+                )
+
+            if submitted:
+                if not all([
+                    flight_number.strip(),
+                    airline.strip(),
+                    source.strip(),
+                    destination.strip(),
+                    departure_time.strip(),
+                    arrival_time.strip()
+                ]):
+                    st.warning("Please fill all flight fields.")
+                else:
+                    payload = {
+                        "flight_number": flight_number.strip(),
+                        "airline": airline.strip(),
+                        "source": source.strip(),
+                        "destination": destination.strip(),
+                        "departure_time": departure_time.strip(),
+                        "arrival_time": arrival_time.strip(),
+                        "economy_price": int(economy_price),
+                        "premium_economy_price": int(premium_economy_price),
+                        "business_price": int(business_price),
+                        "available_seats": int(available_seats)
+                    }
+
+                    response = admin_api_request(
+                        "POST",
+                        "/flights/admin/create",
+                        payload
+                    )
+
+                    if response is not None and response.status_code in [200, 201]:
+                        st.success("Flight created successfully! ✈️")
+                        st.rerun()
+                    else:
+                        st.error(
+                            admin_error_message(
+                                response,
+                                "Unable to create flight."
+                            )
+                        )
+
+        # -----------------------------------------------------
+        # EDIT / DELETE FLIGHT
+        # -----------------------------------------------------
+        with flight_tab3:
+            st.subheader("✏️ Edit or Delete Flight")
+
+            flight_id = st.number_input(
+                "Flight ID",
+                min_value=1,
+                value=1,
+                step=1,
+                key="admin_edit_flight_id"
+            )
+
+            load_col, delete_col = st.columns(2)
+
+            with load_col:
+                load_flight = st.button(
+                    "🔎 Load Flight",
+                    use_container_width=True,
+                    key="admin_load_flight"
+                )
+
+            with delete_col:
+                delete_flight = st.button(
+                    "🗑️ Delete Flight",
+                    use_container_width=True,
+                    key="admin_delete_flight"
+                )
+
+            if load_flight:
+                response = admin_api_get(
+                    f"/flights/admin/{int(flight_id)}"
+                )
+
+                if response is not None and response.status_code == 200:
+                    st.session_state.admin_edit_flight = response.json()
+                else:
+                    st.session_state.admin_edit_flight = None
+                    st.error(
+                        admin_error_message(
+                            response,
+                            "Flight not found."
+                        )
+                    )
+
+            flight_data = st.session_state.get("admin_edit_flight")
+
+            if flight_data:
+                st.info(
+                    f"Editing Flight #{flight_data.get('id')} — "
+                    f"{flight_data.get('airline', '')} / "
+                    f"{flight_data.get('flight_number', '')}"
+                )
+
+                with st.form("admin_edit_flight_form"):
+                    e1, e2 = st.columns(2)
+
+                    with e1:
+                        edit_flight_number = st.text_input(
+                            "Flight Number",
+                            value=str(flight_data.get("flight_number", "")),
+                            key="edit_flight_number"
+                        )
+                        edit_airline = st.text_input(
+                            "Airline",
+                            value=str(flight_data.get("airline", "")),
+                            key="edit_flight_airline"
+                        )
+                        edit_source = st.text_input(
+                            "Source",
+                            value=str(flight_data.get("source", "")),
+                            key="edit_flight_source"
+                        )
+                        edit_destination = st.text_input(
+                            "Destination",
+                            value=str(flight_data.get("destination", "")),
+                            key="edit_flight_destination"
+                        )
+                        edit_departure = st.text_input(
+                            "Departure Time",
+                            value=str(flight_data.get("departure_time", "")),
+                            key="edit_flight_departure"
+                        )
+                        edit_arrival = st.text_input(
+                            "Arrival Time",
+                            value=str(flight_data.get("arrival_time", "")),
+                            key="edit_flight_arrival"
+                        )
+
+                    with e2:
+                        edit_economy = st.number_input(
+                            "Economy Price (₹)",
+                            min_value=1,
+                            value=max(1, int(flight_data.get("economy_price", 1))),
+                            step=100,
+                            key="edit_flight_economy"
+                        )
+                        edit_premium = st.number_input(
+                            "Premium Economy Price (₹)",
+                            min_value=1,
+                            value=max(1, int(flight_data.get("premium_economy_price", 1))),
+                            step=100,
+                            key="edit_flight_premium"
+                        )
+                        edit_business = st.number_input(
+                            "Business Price (₹)",
+                            min_value=1,
+                            value=max(1, int(flight_data.get("business_price", 1))),
+                            step=100,
+                            key="edit_flight_business"
+                        )
+                        edit_seats = st.number_input(
+                            "Available Seats",
+                            min_value=1,
+                            value=max(1, int(flight_data.get("available_seats", 1))),
+                            step=1,
+                            key="edit_flight_seats"
+                        )
+
+                    update_flight = st.form_submit_button(
+                        "💾 Save Changes",
+                        type="primary",
+                        use_container_width=True
+                    )
+
+                if update_flight:
+                    payload = {
+                        "flight_number": edit_flight_number.strip(),
+                        "airline": edit_airline.strip(),
+                        "source": edit_source.strip(),
+                        "destination": edit_destination.strip(),
+                        "departure_time": edit_departure.strip(),
+                        "arrival_time": edit_arrival.strip(),
+                        "economy_price": int(edit_economy),
+                        "premium_economy_price": int(edit_premium),
+                        "business_price": int(edit_business),
+                        "available_seats": int(edit_seats)
+                    }
+
+                    if not all([
+                        payload["flight_number"],
+                        payload["airline"],
+                        payload["source"],
+                        payload["destination"],
+                        payload["departure_time"],
+                        payload["arrival_time"]
+                    ]):
+                        st.warning("Please fill all flight fields.")
+                    else:
+                        response = admin_api_request(
+                            "PUT",
+                            f"/flights/admin/{int(flight_id)}",
+                            payload
+                        )
+
+                        if response is not None and response.status_code == 200:
+                            st.success("Flight updated successfully! ✅")
+                            st.session_state.admin_edit_flight = response.json()
+                            st.rerun()
+                        else:
+                            st.error(
+                                admin_error_message(
+                                    response,
+                                    "Unable to update flight."
+                                )
+                            )
+
+            if delete_flight:
+                response = admin_api_request(
+                    "DELETE",
+                    f"/flights/admin/{int(flight_id)}"
+                )
+
+                if response is not None and response.status_code == 200:
+                    st.success("Flight deleted successfully! 🗑️")
+                    st.session_state.admin_edit_flight = None
+                    st.rerun()
+                else:
+                    st.error(
+                        admin_error_message(
+                            response,
+                            "Unable to delete flight."
+                        )
+                    )
+
+    elif st.session_state.page == "Admin Cabs":
+
+        st.title("🚕 Cab Management")
+        st.caption("Add, edit, inspect and delete cabs from the TRAVELX admin panel.")
+        st.divider()
+
+        cab_tab1, cab_tab2, cab_tab3 = st.tabs([
+            "📋 All Cabs",
+            "➕ Add Cab",
+            "✏️ Edit / Delete"
+        ])
+
+        # ========================================================
+        # ALL CABS
+        # ========================================================
+        with cab_tab1:
+            col1, col2 = st.columns([5, 1])
+            with col1:
+                cab_search = st.text_input(
+                    "Search cabs",
+                    placeholder="Driver, vehicle number, type, source or destination...",
+                    key="admin_cab_search"
+                )
+            with col2:
+                st.write("")
+                if st.button(
+                    "🔄 Refresh",
+                    key="admin_refresh_cabs",
+                    use_container_width=True
+                ):
+                    st.rerun()
+
+            response = admin_api_get("/cabs/admin/all")
+            if response is None:
+                st.warning("Unable to load cabs.")
+            elif response.status_code == 200:
+                cabs = response.json()
+                if cab_search.strip():
+                    term = cab_search.strip().lower()
+                    cabs = [
+                        cab for cab in cabs
+                        if term in str(cab.get("driver_name", "")).lower()
+                        or term in str(cab.get("vehicle_number", "")).lower()
+                        or term in str(cab.get("cab_type", "")).lower()
+                        or term in str(cab.get("source", "")).lower()
+                        or term in str(cab.get("destination", "")).lower()
+                    ]
+
+                if cabs:
+                    cab_df = pd.DataFrame(cabs).rename(columns={
+                        "id": "Cab ID",
+                        "driver_name": "Driver",
+                        "vehicle_number": "Vehicle Number",
+                        "cab_type": "Cab Type",
+                        "source": "Source",
+                        "destination": "Destination",
+                        "fare_per_km": "Fare / Km",
+                        "available_seats": "Available Seats",
+                        "rating": "Rating"
+                    })
+                    if "Fare / Km" in cab_df.columns:
+                        cab_df["Fare / Km"] = cab_df["Fare / Km"].apply(
+                            lambda x: f"₹{float(x):,.0f}"
+                        )
+                    if "Rating" in cab_df.columns:
+                        cab_df["Rating"] = cab_df["Rating"].apply(
+                            lambda x: f"⭐ {float(x):.1f}"
+                        )
+                    st.dataframe(
+                        cab_df,
+                        use_container_width=True,
+                        hide_index=True
+                    )
+                    st.success(f"Showing {len(cabs)} cab(s).")
+                else:
+                    st.info("No cabs found.")
+            else:
+                st.error(
+                    f"Unable to load cabs: "
+                    f"{admin_error_message(response, 'Request failed.')}"
+                )
+
+        # ========================================================
+        # ADD CAB
+        # ========================================================
+        with cab_tab2:
+            st.subheader("➕ Add New Cab")
+            with st.form("admin_add_cab_form"):
+                c1, c2 = st.columns(2)
+                with c1:
+                    driver_name = st.text_input(
+                        "Driver Name",
+                        placeholder="Rahul Sharma"
+                    )
+                    vehicle_number = st.text_input(
+                        "Vehicle Number",
+                        placeholder="TS09AB1234"
+                    )
+                    cab_type = st.text_input(
+                        "Cab Type",
+                        placeholder="Sedan"
+                    )
+                    source = st.text_input(
+                        "Source",
+                        placeholder="Hyderabad"
+                    )
+                    destination = st.text_input(
+                        "Destination",
+                        placeholder="Warangal"
+                    )
+                with c2:
+                    fare_per_km = st.number_input(
+                        "Fare per KM (₹)",
+                        min_value=1.0,
+                        value=15.0,
+                        step=1.0
+                    )
+                    available_seats = st.number_input(
+                        "Available Seats",
+                        min_value=1,
+                        value=4,
+                        step=1
+                    )
+                    rating = st.number_input(
+                        "Rating",
+                        min_value=0.0,
+                        max_value=5.0,
+                        value=4.5,
+                        step=0.1
+                    )
+
+                submitted = st.form_submit_button(
+                    "🚀 Create Cab",
+                    type="primary",
+                    use_container_width=True
+                )
+
+            if submitted:
+                if not all([
+                    driver_name.strip(),
+                    vehicle_number.strip(),
+                    cab_type.strip(),
+                    source.strip(),
+                    destination.strip()
+                ]):
+                    st.warning("Please fill all cab fields.")
+                elif rating < 0 or rating > 5:
+                    st.warning("Rating must be between 0 and 5.")
+                else:
+                    payload = {
+                        "driver_name": driver_name.strip(),
+                        "vehicle_number": vehicle_number.strip(),
+                        "cab_type": cab_type.strip(),
+                        "source": source.strip(),
+                        "destination": destination.strip(),
+                        "fare_per_km": float(fare_per_km),
+                        "available_seats": int(available_seats),
+                        "rating": float(rating)
+                    }
+                    response = admin_api_request(
+                        "POST",
+                        "/cabs/admin/create",
+                        payload
+                    )
+                    if response is not None and response.status_code in [200, 201]:
+                        st.success("Cab created successfully! 🚕")
+                        st.rerun()
+                    else:
+                        st.error(
+                            admin_error_message(
+                                response,
+                                "Unable to create cab."
+                            )
+                        )
+
+        # ========================================================
+        # EDIT / DELETE CAB
+        # ========================================================
+        with cab_tab3:
+            st.subheader("✏️ Edit or Delete Cab")
+            cab_id = st.number_input(
+                "Cab ID",
+                min_value=1,
+                value=1,
+                step=1,
+                key="admin_edit_cab_id"
+            )
+
+            load_col, delete_col = st.columns(2)
+            with load_col:
+                load_cab = st.button(
+                    "🔎 Load Cab",
+                    use_container_width=True,
+                    key="admin_load_cab"
+                )
+            with delete_col:
+                delete_cab = st.button(
+                    "🗑️ Delete Cab",
+                    use_container_width=True,
+                    key="admin_delete_cab"
+                )
+
+            if load_cab:
+                response = admin_api_get(
+                    f"/cabs/admin/{int(cab_id)}"
+                )
+                if response is not None and response.status_code == 200:
+                    st.session_state.admin_edit_cab = response.json()
+                else:
+                    st.session_state.admin_edit_cab = None
+                    st.error(
+                        admin_error_message(
+                            response,
+                            "Cab not found."
+                        )
+                    )
+
+            cab_data = st.session_state.get("admin_edit_cab")
+
+            if cab_data:
+                st.info(
+                    f"Editing Cab #{cab_data.get('id')} — "
+                    f"{cab_data.get('vehicle_number', '')} / "
+                    f"{cab_data.get('cab_type', '')}"
+                )
+
+                with st.form("admin_edit_cab_form"):
+                    e1, e2 = st.columns(2)
+                    with e1:
+                        edit_driver_name = st.text_input(
+                            "Driver Name",
+                            value=str(cab_data.get("driver_name", "")),
+                            key="edit_cab_driver_name"
+                        )
+                        edit_vehicle_number = st.text_input(
+                            "Vehicle Number",
+                            value=str(cab_data.get("vehicle_number", "")),
+                            key="edit_cab_vehicle_number"
+                        )
+                        edit_cab_type = st.text_input(
+                            "Cab Type",
+                            value=str(cab_data.get("cab_type", "")),
+                            key="edit_cab_type"
+                        )
+                        edit_source = st.text_input(
+                            "Source",
+                            value=str(cab_data.get("source", "")),
+                            key="edit_cab_source"
+                        )
+                        edit_destination = st.text_input(
+                            "Destination",
+                            value=str(cab_data.get("destination", "")),
+                            key="edit_cab_destination"
+                        )
+                    with e2:
+                        edit_fare = st.number_input(
+                            "Fare per KM (₹)",
+                            min_value=1.0,
+                            value=max(1.0, float(cab_data.get("fare_per_km", 1))),
+                            step=1.0,
+                            key="edit_cab_fare"
+                        )
+                        edit_seats = st.number_input(
+                            "Available Seats",
+                            min_value=1,
+                            value=max(1, int(cab_data.get("available_seats", 1))),
+                            step=1,
+                            key="edit_cab_seats"
+                        )
+                        edit_rating = st.number_input(
+                            "Rating",
+                            min_value=0.0,
+                            max_value=5.0,
+                            value=min(5.0, max(0.0, float(cab_data.get("rating", 0)))),
+                            step=0.1,
+                            key="edit_cab_rating"
+                        )
+
+                    update_cab = st.form_submit_button(
+                        "💾 Save Changes",
+                        type="primary",
+                        use_container_width=True
+                    )
+
+                if update_cab:
+                    payload = {
+                        "driver_name": edit_driver_name.strip(),
+                        "vehicle_number": edit_vehicle_number.strip(),
+                        "cab_type": edit_cab_type.strip(),
+                        "source": edit_source.strip(),
+                        "destination": edit_destination.strip(),
+                        "fare_per_km": float(edit_fare),
+                        "available_seats": int(edit_seats),
+                        "rating": float(edit_rating)
+                    }
+
+                    if not all([
+                        payload["driver_name"],
+                        payload["vehicle_number"],
+                        payload["cab_type"],
+                        payload["source"],
+                        payload["destination"]
+                    ]):
+                        st.warning("Please fill all cab fields.")
+                    else:
+                        response = admin_api_request(
+                            "PUT",
+                            f"/cabs/admin/{int(cab_id)}",
+                            payload
+                        )
+                        if response is not None and response.status_code == 200:
+                            st.success("Cab updated successfully! ✅")
+                            st.session_state.admin_edit_cab = response.json()
+                            st.rerun()
+                        else:
+                            st.error(
+                                admin_error_message(
+                                    response,
+                                    "Unable to update cab."
+                                )
+                            )
+
+            if delete_cab:
+                response = admin_api_request(
+                    "DELETE",
+                    f"/cabs/admin/{int(cab_id)}"
+                )
+                if response is not None and response.status_code == 200:
+                    st.success("Cab deleted successfully! 🗑️")
+                    st.session_state.admin_edit_cab = None
+                    st.rerun()
+                else:
+                    st.error(
+                        admin_error_message(
+                            response,
+                            "Unable to delete cab."
+                        )
+                    )
+
+    elif st.session_state.page == "Admin Food":
+
+        st.title("🍔 Food Management")
+        st.caption("Manage restaurants and menu items from the TRAVELX admin panel.")
+        st.divider()
+
+        food_tab1, food_tab2, food_tab3 = st.tabs([
+            "🏪 Restaurants",
+            "🍽️ Menu Management",
+            "✏️ Edit / Delete"
+        ])
+
+        # ========================================================
+        # RESTAURANTS
+        # ========================================================
+        with food_tab1:
+            col1, col2 = st.columns([5, 1])
+            with col1:
+                restaurant_search = st.text_input(
+                    "Search restaurants",
+                    placeholder="Name, city, cuisine or address...",
+                    key="admin_restaurant_search"
+                )
+            with col2:
+                st.write("")
+                if st.button(
+                    "🔄 Refresh",
+                    key="admin_refresh_restaurants",
+                    use_container_width=True
+                ):
+                    st.rerun()
+
+            response = admin_api_get("/food/admin/restaurants")
+            if response is None:
+                st.warning("Unable to load restaurants.")
+            elif response.status_code == 200:
+                restaurants = response.json()
+                if restaurant_search.strip():
+                    term = restaurant_search.strip().lower()
+                    restaurants = [
+                        r for r in restaurants
+                        if term in str(r.get("name", "")).lower()
+                        or term in str(r.get("city", "")).lower()
+                        or term in str(r.get("cuisine", "")).lower()
+                        or term in str(r.get("address", "")).lower()
+                    ]
+                if restaurants:
+                    restaurant_df = pd.DataFrame(restaurants).rename(columns={
+                        "id": "Restaurant ID",
+                        "name": "Name",
+                        "city": "City",
+                        "address": "Address",
+                        "cuisine": "Cuisine",
+                        "description": "Description",
+                        "rating": "Rating",
+                        "delivery_time": "Delivery (min)",
+                        "is_open": "Open"
+                    })
+                    if "Rating" in restaurant_df.columns:
+                        restaurant_df["Rating"] = restaurant_df["Rating"].apply(
+                            lambda x: f"{float(x):.1f}/5"
+                        )
+                    if "Open" in restaurant_df.columns:
+                        restaurant_df["Open"] = restaurant_df["Open"].apply(
+                            lambda x: "🟢 Open" if x else "🔴 Closed"
+                        )
+                    st.dataframe(
+                        restaurant_df,
+                        use_container_width=True,
+                        hide_index=True
+                    )
+                    st.success(f"Showing {len(restaurants)} restaurant(s).")
+                else:
+                    st.info("No restaurants found.")
+            else:
+                st.error(
+                    f"Unable to load restaurants: "
+                    f"{admin_error_message(response, 'Request failed.')}"
+                )
+
+        # ========================================================
+        # MENU MANAGEMENT
+        # ========================================================
+        with food_tab2:
+            st.subheader("🍽️ Restaurant Menu")
+
+            restaurant_response = admin_api_get("/food/admin/restaurants")
+            restaurants = (
+                restaurant_response.json()
+                if restaurant_response is not None
+                and restaurant_response.status_code == 200
+                else []
+            )
+
+            if not restaurants:
+                st.info("No restaurants available. Create a restaurant first.")
+            else:
+                restaurant_options = {
+                    f"#{r['id']} — {r['name']} ({r['city']})": r['id']
+                    for r in restaurants
+                }
+                selected_restaurant_label = st.selectbox(
+                    "Select Restaurant",
+                    list(restaurant_options.keys()),
+                    key="admin_food_restaurant_select"
+                )
+                selected_restaurant_id = restaurant_options[selected_restaurant_label]
+
+                menu_response = admin_api_get(
+                    f"/food/admin/menu/{selected_restaurant_id}"
+                )
+
+                if menu_response is not None and menu_response.status_code == 200:
+                    menu_items = menu_response.json()
+                    if menu_items:
+                        menu_df = pd.DataFrame(menu_items).rename(columns={
+                            "id": "Item ID",
+                            "restaurant_id": "Restaurant ID",
+                            "name": "Item Name",
+                            "category": "Category",
+                            "description": "Description",
+                            "price": "Price",
+                            "is_available": "Available"
+                        })
+                        if "Price" in menu_df.columns:
+                            menu_df["Price"] = menu_df["Price"].apply(
+                                lambda x: f"₹{float(x):,.0f}"
+                            )
+                        if "Available" in menu_df.columns:
+                            menu_df["Available"] = menu_df["Available"].apply(
+                                lambda x: "🟢 Yes" if x else "🔴 No"
+                            )
+                        st.dataframe(
+                            menu_df,
+                            use_container_width=True,
+                            hide_index=True
+                        )
+                        st.success(f"Showing {len(menu_items)} menu item(s).")
+                    else:
+                        st.info("No menu items for this restaurant yet.")
+                elif menu_response is not None:
+                    st.error(
+                        admin_error_message(
+                            menu_response,
+                            "Unable to load restaurant menu."
+                        )
+                    )
+
+                st.divider()
+                st.subheader("➕ Add Menu Item")
+                with st.form("admin_add_food_item_form"):
+                    c1, c2 = st.columns(2)
+                    with c1:
+                        food_name = st.text_input(
+                            "Food Item Name",
+                            placeholder="Butter Chicken"
+                        )
+                        food_category = st.text_input(
+                            "Category",
+                            placeholder="Main Course"
+                        )
+                        food_description = st.text_area(
+                            "Description",
+                            placeholder="Creamy tomato-based chicken curry..."
+                        )
+                    with c2:
+                        food_price = st.number_input(
+                            "Price (₹)",
+                            min_value=1,
+                            value=250,
+                            step=10
+                        )
+                        food_available = st.checkbox(
+                            "Available for ordering",
+                            value=True
+                        )
+                    add_food_item = st.form_submit_button(
+                        "🚀 Create Menu Item",
+                        type="primary",
+                        use_container_width=True
+                    )
+
+                if add_food_item:
+                    if not food_name.strip() or not food_category.strip():
+                        st.warning("Please enter food item name and category.")
+                    else:
+                        payload = {
+                            "restaurant_id": int(selected_restaurant_id),
+                            "name": food_name.strip(),
+                            "category": food_category.strip(),
+                            "description": food_description.strip(),
+                            "price": float(food_price),
+                            "is_available": bool(food_available)
+                        }
+                        response = admin_api_request(
+                            "POST",
+                            "/food/admin/menu",
+                            payload
+                        )
+                        if response is not None and response.status_code in [200, 201]:
+                            st.success("Menu item created successfully! 🍽️")
+                            st.rerun()
+                        else:
+                            st.error(
+                                admin_error_message(
+                                    response,
+                                    "Unable to create menu item."
+                                )
+                            )
+
+        # ========================================================
+        # EDIT / DELETE RESTAURANTS + FOOD ITEMS
+        # ========================================================
+        with food_tab3:
+            st.subheader("✏️ Edit or Delete Restaurant")
+            restaurant_id = st.number_input(
+                "Restaurant ID",
+                min_value=1,
+                value=1,
+                step=1,
+                key="admin_edit_restaurant_id"
+            )
+            load_col, delete_col = st.columns(2)
+            with load_col:
+                load_restaurant = st.button(
+                    "🔎 Load Restaurant",
+                    use_container_width=True,
+                    key="admin_load_restaurant"
+                )
+            with delete_col:
+                delete_restaurant = st.button(
+                    "🗑️ Delete Restaurant",
+                    use_container_width=True,
+                    key="admin_delete_restaurant"
+                )
+
+            if load_restaurant:
+                response = admin_api_get(
+                    f"/food/admin/restaurants/{int(restaurant_id)}"
+                )
+                if response is not None and response.status_code == 200:
+                    st.session_state.admin_edit_restaurant = response.json()
+                else:
+                    st.session_state.admin_edit_restaurant = None
+                    st.error(
+                        admin_error_message(
+                            response,
+                            "Restaurant not found."
+                        )
+                    )
+
+            restaurant_data = st.session_state.get("admin_edit_restaurant")
+            if restaurant_data:
+                with st.form("admin_edit_restaurant_form"):
+                    c1, c2 = st.columns(2)
+                    with c1:
+                        edit_restaurant_name = st.text_input(
+                            "Restaurant Name",
+                            value=str(restaurant_data.get("name", "")),
+                            key="edit_restaurant_name"
+                        )
+                        edit_restaurant_city = st.text_input(
+                            "City",
+                            value=str(restaurant_data.get("city", "")),
+                            key="edit_restaurant_city"
+                        )
+                        edit_restaurant_address = st.text_input(
+                            "Address",
+                            value=str(restaurant_data.get("address", "")),
+                            key="edit_restaurant_address"
+                        )
+                        edit_restaurant_cuisine = st.text_input(
+                            "Cuisine",
+                            value=str(restaurant_data.get("cuisine", "")),
+                            key="edit_restaurant_cuisine"
+                        )
+                        edit_restaurant_description = st.text_area(
+                            "Description",
+                            value=str(restaurant_data.get("description", "") or ""),
+                            key="edit_restaurant_description"
+                        )
+                    with c2:
+                        edit_restaurant_rating = st.number_input(
+                            "Rating",
+                            min_value=0.0,
+                            max_value=5.0,
+                            value=float(restaurant_data.get("rating", 0) or 0),
+                            step=0.1,
+                            key="edit_restaurant_rating"
+                        )
+                        edit_delivery_time = st.number_input(
+                            "Delivery Time (minutes)",
+                            min_value=1,
+                            value=max(1, int(restaurant_data.get("delivery_time", 30) or 30)),
+                            step=1,
+                            key="edit_restaurant_delivery"
+                        )
+                        edit_is_open = st.checkbox(
+                            "Restaurant is open",
+                            value=bool(restaurant_data.get("is_open", True)),
+                            key="edit_restaurant_open"
+                        )
+
+                    update_restaurant = st.form_submit_button(
+                        "💾 Save Restaurant Changes",
+                        type="primary",
+                        use_container_width=True
+                    )
+
+                if update_restaurant:
+                    payload = {
+                        "name": edit_restaurant_name.strip(),
+                        "city": edit_restaurant_city.strip(),
+                        "address": edit_restaurant_address.strip(),
+                        "cuisine": edit_restaurant_cuisine.strip(),
+                        "description": edit_restaurant_description.strip(),
+                        "rating": float(edit_restaurant_rating),
+                        "delivery_time": int(edit_delivery_time),
+                        "is_open": bool(edit_is_open)
+                    }
+                    if not all([
+                        payload["name"],
+                        payload["city"],
+                        payload["address"],
+                        payload["cuisine"]
+                    ]):
+                        st.warning("Please fill all required restaurant fields.")
+                    else:
+                        response = admin_api_request(
+                            "PUT",
+                            f"/food/admin/restaurants/{int(restaurant_id)}",
+                            payload
+                        )
+                        if response is not None and response.status_code == 200:
+                            st.success("Restaurant updated successfully! ✅")
+                            st.session_state.admin_edit_restaurant = response.json()
+                            st.rerun()
+                        else:
+                            st.error(
+                                admin_error_message(
+                                    response,
+                                    "Unable to update restaurant."
+                                )
+                            )
+
+            if delete_restaurant:
+                response = admin_api_request(
+                    "DELETE",
+                    f"/food/admin/restaurants/{int(restaurant_id)}"
+                )
+                if response is not None and response.status_code == 200:
+                    st.success("Restaurant deleted successfully! 🗑️")
+                    st.session_state.admin_edit_restaurant = None
+                    st.rerun()
+                else:
+                    st.error(
+                        admin_error_message(
+                            response,
+                            "Unable to delete restaurant."
+                        )
+                    )
+
+            st.divider()
+            st.subheader("🍽️ Edit or Delete Menu Item")
+
+            item_restaurant_response = admin_api_get("/food/admin/restaurants")
+            item_restaurants = (
+                item_restaurant_response.json()
+                if item_restaurant_response is not None
+                and item_restaurant_response.status_code == 200
+                else []
+            )
+
+            if not item_restaurants:
+                st.info("No restaurants available for menu item management.")
+            else:
+                item_restaurant_options = {
+                    f"#{r['id']} — {r['name']} ({r['city']})": r['id']
+                    for r in item_restaurants
+                }
+                edit_menu_restaurant_label = st.selectbox(
+                    "Select Restaurant",
+                    list(item_restaurant_options.keys()),
+                    key="admin_edit_menu_restaurant_select"
+                )
+                edit_menu_restaurant_id = item_restaurant_options[edit_menu_restaurant_label]
+
+                edit_menu_response = admin_api_get(
+                    f"/food/admin/menu/{edit_menu_restaurant_id}"
+                )
+
+                if edit_menu_response is not None and edit_menu_response.status_code == 200:
+                    edit_menu_items = edit_menu_response.json()
+
+                    if not edit_menu_items:
+                        st.info("This restaurant has no menu items yet.")
+                    else:
+                        item_options = {
+                            f"#{item['id']} — {item['name']} (₹{float(item.get('price', 0)):,.0f})": item
+                            for item in edit_menu_items
+                        }
+                        selected_item_label = st.selectbox(
+                            "Select Menu Item",
+                            list(item_options.keys()),
+                            key="admin_food_item_select"
+                        )
+                        food_item_data = item_options[selected_item_label]
+                        selected_item_id = int(food_item_data["id"])
+
+                        with st.form("admin_edit_food_item_form"):
+                            e1, e2 = st.columns(2)
+                            with e1:
+                                edit_item_name = st.text_input(
+                                    "Food Item Name",
+                                    value=str(food_item_data.get("name", "")),
+                                    key="edit_food_item_name"
+                                )
+                                edit_item_category = st.text_input(
+                                    "Category",
+                                    value=str(food_item_data.get("category", "")),
+                                    key="edit_food_item_category"
+                                )
+                                edit_item_description = st.text_area(
+                                    "Description",
+                                    value=str(food_item_data.get("description", "") or ""),
+                                    key="edit_food_item_description"
+                                )
+                            with e2:
+                                edit_item_price = st.number_input(
+                                    "Price (₹)",
+                                    min_value=1,
+                                    value=max(1, int(float(food_item_data.get("price", 1) or 1))),
+                                    step=10,
+                                    key="edit_food_item_price"
+                                )
+                                edit_item_available = st.checkbox(
+                                    "Available for ordering",
+                                    value=bool(food_item_data.get("is_available", True)),
+                                    key="edit_food_item_available"
+                                )
+
+                            update_item = st.form_submit_button(
+                                "💾 Save Menu Item Changes",
+                                type="primary",
+                                use_container_width=True
+                            )
+
+                        if update_item:
+                            payload = {
+                                "restaurant_id": int(edit_menu_restaurant_id),
+                                "name": edit_item_name.strip(),
+                                "category": edit_item_category.strip(),
+                                "description": edit_item_description.strip(),
+                                "price": float(edit_item_price),
+                                "is_available": bool(edit_item_available)
+                            }
+                            if not payload["name"] or not payload["category"]:
+                                st.warning("Please fill all required menu item fields.")
+                            else:
+                                response = admin_api_request(
+                                    "PUT",
+                                    f"/food/admin/menu/{selected_item_id}",
+                                    payload
+                                )
+                                if response is not None and response.status_code == 200:
+                                    st.success("Menu item updated successfully! ✅")
+                                    st.rerun()
+                                else:
+                                    st.error(
+                                        admin_error_message(
+                                            response,
+                                            "Unable to update menu item."
+                                        )
+                                    )
+
+                        if st.button(
+                            "🗑️ Delete Selected Menu Item",
+                            use_container_width=True,
+                            key="admin_delete_selected_food_item"
+                        ):
+                            response = admin_api_request(
+                                "DELETE",
+                                f"/food/admin/menu/{selected_item_id}"
+                            )
+                            if response is not None and response.status_code == 200:
+                                st.success("Menu item deleted successfully! 🗑️")
+                                st.rerun()
+                            else:
+                                st.error(
+                                    admin_error_message(
+                                        response,
+                                        "Unable to delete menu item."
+                                    )
+                                )
+                elif edit_menu_response is not None:
+                    st.error(
+                        admin_error_message(
+                            edit_menu_response,
+                            "Unable to load menu items."
+                        )
+                    )
+
+
+    elif st.session_state.page == "Admin Movies":
+
+        st.title("🎬 Movie Management")
+        st.caption("Manage movies, cinemas and movie shows from the TRAVELX admin panel.")
+        st.divider()
+
+        movie_tab1, movie_tab2, movie_tab3 = st.tabs([
+            "🎬 Movies",
+            "🏢 Cinemas",
+            "🕒 Shows"
+        ])
+
+        # ========================================================
+        # MOVIES
+        # ========================================================
+        with movie_tab1:
+            st.subheader("🎬 Movie Catalog")
+
+            movie_search = st.text_input(
+                "Search movies",
+                placeholder="Title, language, genre...",
+                key="admin_movie_search"
+            )
+
+            response = admin_api_get("/movies/admin/all")
+            if response is None:
+                st.warning("Unable to load movies.")
+            elif response.status_code == 200:
+                movies = response.json()
+                if movie_search.strip():
+                    term = movie_search.strip().lower()
+                    movies = [
+                        m for m in movies
+                        if term in str(m.get("title", "")).lower()
+                        or term in str(m.get("language", "")).lower()
+                        or term in str(m.get("genre", "")).lower()
+                    ]
+
+                if movies:
+                    movie_df = pd.DataFrame(movies).rename(columns={
+                        "id": "Movie ID",
+                        "title": "Title",
+                        "language": "Language",
+                        "genre": "Genre",
+                        "duration_minutes": "Duration (min)",
+                        "rating": "Rating",
+                        "description": "Description",
+                        "release_date": "Release Date",
+                        "is_active": "Active"
+                    })
+                    if "Rating" in movie_df.columns:
+                        movie_df["Rating"] = movie_df["Rating"].apply(
+                            lambda x: f"{float(x):.1f}/5"
+                        )
+                    if "Active" in movie_df.columns:
+                        movie_df["Active"] = movie_df["Active"].apply(
+                            lambda x: "🟢 Active" if x else "🔴 Inactive"
+                        )
+                    st.dataframe(movie_df, use_container_width=True, hide_index=True)
+                    st.success(f"Showing {len(movies)} movie(s).")
+                else:
+                    st.info("No movies found.")
+            else:
+                st.error(admin_error_message(response, "Unable to load movies."))
+
+            st.divider()
+            st.subheader("➕ Add Movie")
+
+            with st.form("admin_add_movie_form"):
+                c1, c2 = st.columns(2)
+                with c1:
+                    movie_title = st.text_input("Movie Title", placeholder="Kalki 2898 AD")
+                    movie_language = st.text_input("Language", placeholder="Hindi")
+                    movie_genre = st.text_input("Genre", placeholder="Sci-Fi")
+                    movie_duration = st.number_input(
+                        "Duration (minutes)", min_value=1, value=150, step=1
+                    )
+                with c2:
+                    movie_rating = st.number_input(
+                        "Rating", min_value=0.0, max_value=5.0, value=4.0, step=0.1
+                    )
+                    movie_release_date = st.text_input(
+                        "Release Date", placeholder="2026-09-13"
+                    )
+                    movie_description = st.text_area(
+                        "Description", placeholder="Movie description..."
+                    )
+                    movie_active = st.checkbox("Movie is active", value=True)
+
+                create_movie = st.form_submit_button(
+                    "🚀 Create Movie", type="primary", use_container_width=True
+                )
+
+            if create_movie:
+                if not movie_title.strip() or not movie_language.strip() or not movie_genre.strip():
+                    st.warning("Please fill title, language and genre.")
+                else:
+                    payload = {
+                        "title": movie_title.strip(),
+                        "language": movie_language.strip(),
+                        "genre": movie_genre.strip(),
+                        "duration_minutes": int(movie_duration),
+                        "rating": float(movie_rating),
+                        "description": movie_description.strip(),
+                        "release_date": movie_release_date.strip() or None,
+                        "is_active": bool(movie_active)
+                    }
+                    response = admin_api_request("POST", "/movies/admin/create", payload)
+                    if response is not None and response.status_code in [200, 201]:
+                        st.success("Movie created successfully! 🎬")
+                        st.rerun()
+                    else:
+                        st.error(admin_error_message(response, "Unable to create movie."))
+
+            st.divider()
+            st.subheader("✏️ Edit / Delete Movie")
+
+            movie_id = st.number_input(
+                "Movie ID", min_value=1, value=1, step=1, key="admin_edit_movie_id"
+            )
+            lc1, lc2 = st.columns(2)
+            with lc1:
+                load_movie = st.button(
+                    "🔎 Load Movie", use_container_width=True, key="admin_load_movie"
+                )
+            with lc2:
+                delete_movie = st.button(
+                    "🗑️ Delete Movie", use_container_width=True, key="admin_delete_movie"
+                )
+
+            if load_movie:
+                response = admin_api_get(f"/movies/admin/{int(movie_id)}")
+                if response is not None and response.status_code == 200:
+                    st.session_state.admin_edit_movie = response.json()
+                else:
+                    st.session_state.admin_edit_movie = None
+                    st.error(admin_error_message(response, "Movie not found."))
+
+            movie_data = st.session_state.get("admin_edit_movie")
+            if movie_data:
+                with st.form("admin_edit_movie_form"):
+                    e1, e2 = st.columns(2)
+                    with e1:
+                        edit_movie_title = st.text_input(
+                            "Movie Title", value=str(movie_data.get("title", "")), key="edit_movie_title"
+                        )
+                        edit_movie_language = st.text_input(
+                            "Language", value=str(movie_data.get("language", "")), key="edit_movie_language"
+                        )
+                        edit_movie_genre = st.text_input(
+                            "Genre", value=str(movie_data.get("genre", "")), key="edit_movie_genre"
+                        )
+                        edit_movie_duration = st.number_input(
+                            "Duration (minutes)", min_value=1,
+                            value=max(1, int(movie_data.get("duration_minutes", 1) or 1)),
+                            step=1, key="edit_movie_duration"
+                        )
+                    with e2:
+                        edit_movie_rating = st.number_input(
+                            "Rating", min_value=0.0, max_value=5.0,
+                            value=float(movie_data.get("rating", 0) or 0),
+                            step=0.1, key="edit_movie_rating"
+                        )
+                        edit_movie_release = st.text_input(
+                            "Release Date",
+                            value=str(movie_data.get("release_date", "") or ""),
+                            key="edit_movie_release"
+                        )
+                        edit_movie_description = st.text_area(
+                            "Description",
+                            value=str(movie_data.get("description", "") or ""),
+                            key="edit_movie_description"
+                        )
+                        edit_movie_active = st.checkbox(
+                            "Movie is active",
+                            value=bool(movie_data.get("is_active", True)),
+                            key="edit_movie_active"
+                        )
+
+                    update_movie = st.form_submit_button(
+                        "💾 Save Movie Changes", type="primary", use_container_width=True
+                    )
+
+                if update_movie:
+                    payload = {
+                        "title": edit_movie_title.strip(),
+                        "language": edit_movie_language.strip(),
+                        "genre": edit_movie_genre.strip(),
+                        "duration_minutes": int(edit_movie_duration),
+                        "rating": float(edit_movie_rating),
+                        "description": edit_movie_description.strip(),
+                        "release_date": edit_movie_release.strip() or None,
+                        "is_active": bool(edit_movie_active)
+                    }
+                    if not payload["title"] or not payload["language"] or not payload["genre"]:
+                        st.warning("Please fill all required movie fields.")
+                    else:
+                        response = admin_api_request(
+                            "PUT", f"/movies/admin/{int(movie_id)}", payload
+                        )
+                        if response is not None and response.status_code == 200:
+                            st.success("Movie updated successfully! ✅")
+                            st.session_state.admin_edit_movie = response.json()
+                            st.rerun()
+                        else:
+                            st.error(admin_error_message(response, "Unable to update movie."))
+
+            if delete_movie:
+                response = admin_api_request("DELETE", f"/movies/admin/{int(movie_id)}")
+                if response is not None and response.status_code == 200:
+                    st.success("Movie deleted successfully! 🗑️")
+                    st.session_state.admin_edit_movie = None
+                    st.rerun()
+                else:
+                    st.error(admin_error_message(response, "Unable to delete movie."))
+
+        # ========================================================
+        # CINEMAS
+        # ========================================================
+        with movie_tab2:
+            st.subheader("🏢 Cinema Management")
+
+            cinema_response = admin_api_get("/movies/admin/cinemas/all")
+            cinemas = (
+                cinema_response.json()
+                if cinema_response is not None and cinema_response.status_code == 200
+                else []
+            )
+
+            if cinema_response is not None and cinema_response.status_code != 200:
+                st.error(admin_error_message(cinema_response, "Unable to load cinemas."))
+
+            cinema_search = st.text_input(
+                "Search cinemas", placeholder="Name, city or address...", key="admin_cinema_search"
+            )
+            filtered_cinemas = cinemas
+            if cinema_search.strip():
+                term = cinema_search.strip().lower()
+                filtered_cinemas = [
+                    c for c in cinemas
+                    if term in str(c.get("name", "")).lower()
+                    or term in str(c.get("city", "")).lower()
+                    or term in str(c.get("address", "")).lower()
+                ]
+
+            if filtered_cinemas:
+                cinema_df = pd.DataFrame(filtered_cinemas).rename(columns={
+                    "id": "Cinema ID",
+                    "name": "Name",
+                    "city": "City",
+                    "address": "Address",
+                    "total_seats": "Total Seats"
+                })
+                st.dataframe(cinema_df, use_container_width=True, hide_index=True)
+                st.success(f"Showing {len(filtered_cinemas)} cinema(s).")
+            else:
+                st.info("No cinemas found.")
+
+            st.divider()
+            st.subheader("➕ Add Cinema")
+            with st.form("admin_add_cinema_form"):
+                c1, c2 = st.columns(2)
+                with c1:
+                    cinema_name = st.text_input("Cinema Name", placeholder="PVR Cinemas")
+                    cinema_city = st.text_input("City", placeholder="Hyderabad")
+                with c2:
+                    cinema_address = st.text_input("Address", placeholder="Banjara Hills")
+                    cinema_total_seats = st.number_input(
+                        "Total Seats", min_value=1, value=200, step=10
+                    )
+                create_cinema = st.form_submit_button(
+                    "🚀 Create Cinema", type="primary", use_container_width=True
+                )
+
+            if create_cinema:
+                if not cinema_name.strip() or not cinema_city.strip() or not cinema_address.strip():
+                    st.warning("Please fill all cinema fields.")
+                else:
+                    payload = {
+                        "name": cinema_name.strip(),
+                        "city": cinema_city.strip(),
+                        "address": cinema_address.strip(),
+                        "total_seats": int(cinema_total_seats)
+                    }
+                    response = admin_api_request(
+                        "POST", "/movies/admin/cinemas/create", payload
+                    )
+                    if response is not None and response.status_code in [200, 201]:
+                        st.success("Cinema created successfully! 🏢")
+                        st.rerun()
+                    else:
+                        st.error(admin_error_message(response, "Unable to create cinema."))
+
+            st.divider()
+            st.subheader("✏️ Edit / Delete Cinema")
+            cinema_id = st.number_input(
+                "Cinema ID", min_value=1, value=1, step=1, key="admin_edit_cinema_id"
+            )
+            cc1, cc2 = st.columns(2)
+            with cc1:
+                load_cinema = st.button(
+                    "🔎 Load Cinema", use_container_width=True, key="admin_load_cinema"
+                )
+            with cc2:
+                delete_cinema = st.button(
+                    "🗑️ Delete Cinema", use_container_width=True, key="admin_delete_cinema"
+                )
+
+            if load_cinema:
+                response = admin_api_get(f"/movies/admin/cinemas/{int(cinema_id)}")
+                if response is not None and response.status_code == 200:
+                    st.session_state.admin_edit_cinema = response.json()
+                else:
+                    st.session_state.admin_edit_cinema = None
+                    st.error(admin_error_message(response, "Cinema not found."))
+
+            cinema_data = st.session_state.get("admin_edit_cinema")
+            if cinema_data:
+                with st.form("admin_edit_cinema_form"):
+                    ec1, ec2 = st.columns(2)
+                    with ec1:
+                        edit_cinema_name = st.text_input(
+                            "Cinema Name", value=str(cinema_data.get("name", "")), key="edit_cinema_name"
+                        )
+                        edit_cinema_city = st.text_input(
+                            "City", value=str(cinema_data.get("city", "")), key="edit_cinema_city"
+                        )
+                    with ec2:
+                        edit_cinema_address = st.text_input(
+                            "Address", value=str(cinema_data.get("address", "")), key="edit_cinema_address"
+                        )
+                        edit_cinema_seats = st.number_input(
+                            "Total Seats", min_value=1,
+                            value=max(1, int(cinema_data.get("total_seats", 1) or 1)),
+                            step=10, key="edit_cinema_seats"
+                        )
+                    update_cinema = st.form_submit_button(
+                        "💾 Save Cinema Changes", type="primary", use_container_width=True
+                    )
+
+                if update_cinema:
+                    payload = {
+                        "name": edit_cinema_name.strip(),
+                        "city": edit_cinema_city.strip(),
+                        "address": edit_cinema_address.strip(),
+                        "total_seats": int(edit_cinema_seats)
+                    }
+                    if not all([payload["name"], payload["city"], payload["address"]]):
+                        st.warning("Please fill all required cinema fields.")
+                    else:
+                        response = admin_api_request(
+                            "PUT", f"/movies/admin/cinemas/{int(cinema_id)}", payload
+                        )
+                        if response is not None and response.status_code == 200:
+                            st.success("Cinema updated successfully! ✅")
+                            st.session_state.admin_edit_cinema = response.json()
+                            st.rerun()
+                        else:
+                            st.error(admin_error_message(response, "Unable to update cinema."))
+
+            if delete_cinema:
+                response = admin_api_request(
+                    "DELETE", f"/movies/admin/cinemas/{int(cinema_id)}"
+                )
+                if response is not None and response.status_code == 200:
+                    st.success("Cinema deleted successfully! 🗑️")
+                    st.session_state.admin_edit_cinema = None
+                    st.rerun()
+                else:
+                    st.error(admin_error_message(response, "Unable to delete cinema."))
+
+        # ========================================================
+        # SHOWS
+        # ========================================================
+        with movie_tab3:
+            st.subheader("🕒 Movie Show Management")
+
+            shows_response = admin_api_get("/movies/admin/shows/all")
+            shows = (
+                shows_response.json()
+                if shows_response is not None and shows_response.status_code == 200
+                else []
+            )
+
+            if shows_response is not None and shows_response.status_code != 200:
+                st.error(admin_error_message(shows_response, "Unable to load shows."))
+
+            movies_response = admin_api_get("/movies/admin/all")
+            movies = (
+                movies_response.json()
+                if movies_response is not None and movies_response.status_code == 200
+                else []
+            )
+            cinemas_response = admin_api_get("/movies/admin/cinemas/all")
+            cinemas = (
+                cinemas_response.json()
+                if cinemas_response is not None and cinemas_response.status_code == 200
+                else []
+            )
+
+            if shows:
+                movie_lookup = {m["id"]: m.get("title", "") for m in movies}
+                cinema_lookup = {c["id"]: c.get("name", "") for c in cinemas}
+                display_shows = []
+                for show in shows:
+                    row = dict(show)
+                    row["movie"] = movie_lookup.get(show.get("movie_id"), f"Movie #{show.get('movie_id')}")
+                    row["cinema"] = cinema_lookup.get(show.get("cinema_id"), f"Cinema #{show.get('cinema_id')}")
+                    display_shows.append(row)
+
+                show_df = pd.DataFrame(display_shows).rename(columns={
+                    "id": "Show ID",
+                    "movie": "Movie",
+                    "cinema": "Cinema",
+                    "movie_id": "Movie ID",
+                    "cinema_id": "Cinema ID",
+                    "show_date": "Date",
+                    "show_time": "Time",
+                    "screen_name": "Screen",
+                    "ticket_price": "Ticket Price",
+                    "total_seats": "Total Seats",
+                    "available_seats": "Available Seats"
+                })
+                if "Ticket Price" in show_df.columns:
+                    show_df["Ticket Price"] = show_df["Ticket Price"].apply(
+                        lambda x: f"₹{float(x):,.0f}"
+                    )
+                st.dataframe(show_df, use_container_width=True, hide_index=True)
+                st.success(f"Showing {len(shows)} show(s).")
+            else:
+                st.info("No movie shows found.")
+
+            if not movies or not cinemas:
+                st.warning("Create at least one movie and one cinema before adding a show.")
+            else:
+                st.divider()
+                st.subheader("➕ Add Movie Show")
+
+                movie_options = {
+                    f"#{m['id']} — {m['title']}": m['id'] for m in movies
+                }
+                cinema_options = {
+                    f"#{c['id']} — {c['name']} ({c['city']})": c['id'] for c in cinemas
+                }
+
+                with st.form("admin_add_movie_show_form"):
+                    c1, c2 = st.columns(2)
+                    with c1:
+                        add_show_movie_label = st.selectbox(
+                            "Movie", list(movie_options.keys()), key="admin_add_show_movie"
+                        )
+                        add_show_cinema_label = st.selectbox(
+                            "Cinema", list(cinema_options.keys()), key="admin_add_show_cinema"
+                        )
+                        add_show_date = st.text_input(
+                            "Show Date", placeholder="2026-09-20"
+                        )
+                        add_show_time = st.text_input(
+                            "Show Time", placeholder="19:30"
+                        )
+                    with c2:
+                        add_show_screen = st.text_input(
+                            "Screen Name", placeholder="Screen 1"
+                        )
+                        add_show_price = st.number_input(
+                            "Ticket Price (₹)", min_value=1, value=250, step=10
+                        )
+                        add_show_total = st.number_input(
+                            "Total Seats", min_value=1, value=200, step=10
+                        )
+                        add_show_available = st.number_input(
+                            "Available Seats", min_value=0, value=200, step=10
+                        )
+
+                    create_show = st.form_submit_button(
+                        "🚀 Create Show", type="primary", use_container_width=True
+                    )
+
+                if create_show:
+                    if not add_show_date.strip() or not add_show_time.strip() or not add_show_screen.strip():
+                        st.warning("Please enter date, time and screen name.")
+                    elif int(add_show_available) > int(add_show_total):
+                        st.warning("Available seats cannot exceed total seats.")
+                    else:
+                        payload = {
+                            "movie_id": int(movie_options[add_show_movie_label]),
+                            "cinema_id": int(cinema_options[add_show_cinema_label]),
+                            "show_date": add_show_date.strip(),
+                            "show_time": add_show_time.strip(),
+                            "screen_name": add_show_screen.strip(),
+                            "ticket_price": float(add_show_price),
+                            "total_seats": int(add_show_total),
+                            "available_seats": int(add_show_available)
+                        }
+                        response = admin_api_request(
+                            "POST", "/movies/admin/shows/create", payload
+                        )
+                        if response is not None and response.status_code in [200, 201]:
+                            st.success("Movie show created successfully! 🕒")
+                            st.rerun()
+                        else:
+                            st.error(admin_error_message(response, "Unable to create movie show."))
+
+            st.divider()
+            st.subheader("✏️ Edit / Delete Show")
+            show_id = st.number_input(
+                "Show ID", min_value=1, value=1, step=1, key="admin_edit_show_id"
+            )
+            sc1, sc2 = st.columns(2)
+            with sc1:
+                load_show = st.button(
+                    "🔎 Load Show", use_container_width=True, key="admin_load_show"
+                )
+            with sc2:
+                delete_show = st.button(
+                    "🗑️ Delete Show", use_container_width=True, key="admin_delete_show"
+                )
+
+            if load_show:
+                response = admin_api_get(f"/movies/admin/shows/{int(show_id)}")
+                if response is not None and response.status_code == 200:
+                    st.session_state.admin_edit_movie_show = response.json()
+                else:
+                    st.session_state.admin_edit_movie_show = None
+                    st.error(admin_error_message(response, "Movie show not found."))
+
+            show_data = st.session_state.get("admin_edit_movie_show")
+            if show_data:
+                movie_options_edit = {f"#{m['id']} — {m['title']}": m['id'] for m in movies}
+                cinema_options_edit = {f"#{c['id']} — {c['name']} ({c['city']})": c['id'] for c in cinemas}
+                movie_label_by_id = {v: k for k, v in movie_options_edit.items()}
+                cinema_label_by_id = {v: k for k, v in cinema_options_edit.items()}
+
+                with st.form("admin_edit_movie_show_form"):
+                    e1, e2 = st.columns(2)
+                    with e1:
+                        current_movie_id = int(show_data.get("movie_id", 0))
+                        current_cinema_id = int(show_data.get("cinema_id", 0))
+                        edit_show_movie = st.selectbox(
+                            "Movie",
+                            list(movie_options_edit.keys()),
+                            index=list(movie_options_edit.keys()).index(movie_label_by_id[current_movie_id])
+                            if current_movie_id in movie_label_by_id else 0,
+                            key="edit_show_movie"
+                        )
+                        edit_show_cinema = st.selectbox(
+                            "Cinema",
+                            list(cinema_options_edit.keys()),
+                            index=list(cinema_options_edit.keys()).index(cinema_label_by_id[current_cinema_id])
+                            if current_cinema_id in cinema_label_by_id else 0,
+                            key="edit_show_cinema"
+                        )
+                        edit_show_date = st.text_input(
+                            "Show Date", value=str(show_data.get("show_date", "")), key="edit_show_date"
+                        )
+                        edit_show_time = st.text_input(
+                            "Show Time", value=str(show_data.get("show_time", "")), key="edit_show_time"
+                        )
+                    with e2:
+                        edit_show_screen = st.text_input(
+                            "Screen Name", value=str(show_data.get("screen_name", "")), key="edit_show_screen"
+                        )
+                        edit_show_price = st.number_input(
+                            "Ticket Price (₹)", min_value=1,
+                            value=max(1, int(float(show_data.get("ticket_price", 1) or 1))),
+                            step=10, key="edit_show_price"
+                        )
+                        edit_show_total = st.number_input(
+                            "Total Seats", min_value=1,
+                            value=max(1, int(show_data.get("total_seats", 1) or 1)),
+                            step=10, key="edit_show_total"
+                        )
+                        edit_show_available = st.number_input(
+                            "Available Seats", min_value=0,
+                            value=max(0, int(show_data.get("available_seats", 0) or 0)),
+                            step=10, key="edit_show_available"
+                        )
+
+                    update_show = st.form_submit_button(
+                        "💾 Save Show Changes", type="primary", use_container_width=True
+                    )
+
+                if update_show:
+                    if not edit_show_date.strip() or not edit_show_time.strip() or not edit_show_screen.strip():
+                        st.warning("Please fill date, time and screen name.")
+                    elif int(edit_show_available) > int(edit_show_total):
+                        st.warning("Available seats cannot exceed total seats.")
+                    else:
+                        payload = {
+                            "movie_id": int(movie_options_edit[edit_show_movie]),
+                            "cinema_id": int(cinema_options_edit[edit_show_cinema]),
+                            "show_date": edit_show_date.strip(),
+                            "show_time": edit_show_time.strip(),
+                            "screen_name": edit_show_screen.strip(),
+                            "ticket_price": float(edit_show_price),
+                            "total_seats": int(edit_show_total),
+                            "available_seats": int(edit_show_available)
+                        }
+                        response = admin_api_request(
+                            "PUT", f"/movies/admin/shows/{int(show_id)}", payload
+                        )
+                        if response is not None and response.status_code == 200:
+                            st.success("Movie show updated successfully! ✅")
+                            st.session_state.admin_edit_movie_show = response.json()
+                            st.rerun()
+                        else:
+                            st.error(admin_error_message(response, "Unable to update movie show."))
+
+            if delete_show:
+                response = admin_api_request(
+                    "DELETE", f"/movies/admin/shows/{int(show_id)}"
+                )
+                if response is not None and response.status_code == 200:
+                    st.success("Movie show deleted successfully! 🗑️")
+                    st.session_state.admin_edit_movie_show = None
+                    st.rerun()
+                else:
+                    st.error(admin_error_message(response, "Unable to delete movie show."))
+
+
+    elif st.session_state.page == "Admin Events":
+
+        st.title("🎟️ Event Management")
+        st.caption("Manage events, venues and event shows from the TRAVELX admin panel.")
+        st.divider()
+
+        event_tab1, event_tab2, event_tab3 = st.tabs([
+            "🎟️ Events",
+            "🏟️ Venues",
+            "🕒 Shows"
+        ])
+
+        # ========================================================
+        # EVENTS
+        # ========================================================
+        with event_tab1:
+            st.subheader("🎟️ Event Management")
+
+            events_response = admin_api_get("/events/admin/all")
+            events = (
+                events_response.json()
+                if events_response is not None and events_response.status_code == 200
+                else []
+            )
+
+            if events_response is not None and events_response.status_code != 200:
+                st.error(admin_error_message(events_response, "Unable to load events."))
+
+            col1, col2 = st.columns([5, 1])
+            with col1:
+                event_search = st.text_input(
+                    "Search events",
+                    placeholder="Name, category or language...",
+                    key="admin_event_search"
+                )
+            with col2:
+                st.write("")
+                if st.button("🔄 Refresh", key="admin_refresh_events", use_container_width=True):
+                    st.rerun()
+
+            filtered_events = events
+            if event_search.strip():
+                term = event_search.strip().lower()
+                filtered_events = [
+                    e for e in events
+                    if term in str(e.get("name", "")).lower()
+                    or term in str(e.get("category", "")).lower()
+                    or term in str(e.get("language", "")).lower()
+                    or term in str(e.get("description", "")).lower()
+                ]
+
+            if filtered_events:
+                event_df = pd.DataFrame(filtered_events).rename(columns={
+                    "id": "Event ID",
+                    "name": "Name",
+                    "category": "Category",
+                    "description": "Description",
+                    "language": "Language",
+                    "duration_minutes": "Duration (min)",
+                    "rating": "Rating",
+                    "image_url": "Image URL",
+                    "created_at": "Created At"
+                })
+                st.dataframe(event_df, use_container_width=True, hide_index=True)
+                st.success(f"Showing {len(filtered_events)} event(s).")
+            else:
+                st.info("No events found.")
+
+            st.divider()
+            st.subheader("➕ Add New Event")
+
+            with st.form("admin_add_event_form"):
+                c1, c2 = st.columns(2)
+                with c1:
+                    event_name = st.text_input("Event Name", placeholder="Sunburn Festival")
+                    event_category = st.text_input("Category", placeholder="Music")
+                    event_language = st.text_input("Language", placeholder="English")
+                    event_duration = st.number_input(
+                        "Duration (minutes)", min_value=1, value=120, step=10
+                    )
+                with c2:
+                    event_rating = st.number_input(
+                        "Rating", min_value=0.0, max_value=5.0, value=4.5, step=0.1
+                    )
+                    event_image = st.text_input("Image URL", placeholder="https://...")
+                    event_description = st.text_area(
+                        "Description", placeholder="Event description..."
+                    )
+
+                create_event = st.form_submit_button(
+                    "🚀 Create Event", type="primary", use_container_width=True
+                )
+
+            if create_event:
+                payload = {
+                    "name": event_name.strip(),
+                    "category": event_category.strip(),
+                    "description": event_description.strip() or None,
+                    "language": event_language.strip() or None,
+                    "duration_minutes": int(event_duration),
+                    "rating": float(event_rating),
+                    "image_url": event_image.strip() or None
+                }
+                if not payload["name"] or not payload["category"]:
+                    st.warning("Please fill Event Name and Category.")
+                else:
+                    response = admin_api_request("POST", "/events/admin/create", payload)
+                    if response is not None and response.status_code in [200, 201]:
+                        st.success("Event created successfully! 🎟️")
+                        st.rerun()
+                    else:
+                        st.error(admin_error_message(response, "Unable to create event."))
+
+            st.divider()
+            st.subheader("✏️ Edit / Delete Event")
+            event_id = st.number_input(
+                "Event ID", min_value=1, value=1, step=1, key="admin_edit_event_id"
+            )
+            load_col, delete_col = st.columns(2)
+            with load_col:
+                load_event = st.button("🔎 Load Event", use_container_width=True, key="admin_load_event")
+            with delete_col:
+                delete_event = st.button("🗑️ Delete Event", use_container_width=True, key="admin_delete_event")
+
+            if load_event:
+                response = admin_api_get(f"/events/admin/{int(event_id)}")
+                if response is not None and response.status_code == 200:
+                    st.session_state.admin_edit_event = response.json()
+                else:
+                    st.session_state.admin_edit_event = None
+                    st.error(admin_error_message(response, "Event not found."))
+
+            event_data = st.session_state.get("admin_edit_event")
+            if event_data:
+                st.info(f"Editing Event #{event_data.get('id')} — {event_data.get('name', '')}")
+                with st.form("admin_edit_event_form"):
+                    e1, e2 = st.columns(2)
+                    with e1:
+                        edit_event_name = st.text_input(
+                            "Event Name", value=str(event_data.get("name", "")), key="edit_event_name"
+                        )
+                        edit_event_category = st.text_input(
+                            "Category", value=str(event_data.get("category", "")), key="edit_event_category"
+                        )
+                        edit_event_language = st.text_input(
+                            "Language", value=str(event_data.get("language", "") or ""), key="edit_event_language"
+                        )
+                        edit_event_duration = st.number_input(
+                            "Duration (minutes)", min_value=1,
+                            value=max(1, int(event_data.get("duration_minutes", 1) or 1)),
+                            step=10, key="edit_event_duration"
+                        )
+                    with e2:
+                        edit_event_rating = st.number_input(
+                            "Rating", min_value=0.0, max_value=5.0,
+                            value=min(5.0, max(0.0, float(event_data.get("rating", 0) or 0))),
+                            step=0.1, key="edit_event_rating"
+                        )
+                        edit_event_image = st.text_input(
+                            "Image URL", value=str(event_data.get("image_url", "") or ""), key="edit_event_image"
+                        )
+                        edit_event_description = st.text_area(
+                            "Description", value=str(event_data.get("description", "") or ""), key="edit_event_description"
+                        )
+
+                    update_event = st.form_submit_button(
+                        "💾 Save Event Changes", type="primary", use_container_width=True
+                    )
+
+                if update_event:
+                    payload = {
+                        "name": edit_event_name.strip(),
+                        "category": edit_event_category.strip(),
+                        "description": edit_event_description.strip() or None,
+                        "language": edit_event_language.strip() or None,
+                        "duration_minutes": int(edit_event_duration),
+                        "rating": float(edit_event_rating),
+                        "image_url": edit_event_image.strip() or None
+                    }
+                    if not payload["name"] or not payload["category"]:
+                        st.warning("Please fill Event Name and Category.")
+                    else:
+                        response = admin_api_request(
+                            "PUT", f"/events/admin/{int(event_id)}", payload
+                        )
+                        if response is not None and response.status_code == 200:
+                            st.success("Event updated successfully! ✅")
+                            st.session_state.admin_edit_event = response.json()
+                            st.rerun()
+                        else:
+                            st.error(admin_error_message(response, "Unable to update event."))
+
+            if delete_event:
+                response = admin_api_request("DELETE", f"/events/admin/{int(event_id)}")
+                if response is not None and response.status_code == 200:
+                    st.success("Event deleted successfully! 🗑️")
+                    st.session_state.admin_edit_event = None
+                    st.rerun()
+                else:
+                    st.error(admin_error_message(response, "Unable to delete event."))
+
+        # ========================================================
+        # VENUES
+        # ========================================================
+        with event_tab2:
+            st.subheader("🏟️ Event Venue Management")
+            venues_response = admin_api_get("/events/admin/venues/all")
+            venues = (
+                venues_response.json()
+                if venues_response is not None and venues_response.status_code == 200
+                else []
+            )
+            if venues_response is not None and venues_response.status_code != 200:
+                st.error(admin_error_message(venues_response, "Unable to load venues."))
+
+            venue_search = st.text_input(
+                "Search venues", placeholder="Name, city or address...", key="admin_event_venue_search"
+            )
+            filtered_venues = venues
+            if venue_search.strip():
+                term = venue_search.strip().lower()
+                filtered_venues = [
+                    v for v in venues
+                    if term in str(v.get("name", "")).lower()
+                    or term in str(v.get("city", "")).lower()
+                    or term in str(v.get("address", "")).lower()
+                ]
+
+            if filtered_venues:
+                venue_df = pd.DataFrame(filtered_venues).rename(columns={
+                    "id": "Venue ID", "name": "Name", "city": "City",
+                    "address": "Address", "capacity": "Capacity", "created_at": "Created At"
+                })
+                st.dataframe(venue_df, use_container_width=True, hide_index=True)
+                st.success(f"Showing {len(filtered_venues)} venue(s).")
+            else:
+                st.info("No venues found.")
+
+            st.divider()
+            st.subheader("➕ Add New Venue")
+            with st.form("admin_add_event_venue_form"):
+                c1, c2 = st.columns(2)
+                with c1:
+                    venue_name = st.text_input("Venue Name", placeholder="Gachibowli Stadium")
+                    venue_city = st.text_input("City", placeholder="Hyderabad")
+                with c2:
+                    venue_address = st.text_input("Address", placeholder="Gachibowli, Hyderabad")
+                    venue_capacity = st.number_input("Capacity", min_value=1, value=1000, step=100)
+                create_venue = st.form_submit_button(
+                    "🚀 Create Venue", type="primary", use_container_width=True
+                )
+
+            if create_venue:
+                payload = {
+                    "name": venue_name.strip(),
+                    "city": venue_city.strip(),
+                    "address": venue_address.strip(),
+                    "capacity": int(venue_capacity)
+                }
+                if not all([payload["name"], payload["city"], payload["address"]]):
+                    st.warning("Please fill all venue fields.")
+                else:
+                    response = admin_api_request("POST", "/events/admin/venues/create", payload)
+                    if response is not None and response.status_code in [200, 201]:
+                        st.success("Venue created successfully! 🏟️")
+                        st.rerun()
+                    else:
+                        st.error(admin_error_message(response, "Unable to create venue."))
+
+            st.divider()
+            st.subheader("✏️ Edit / Delete Venue")
+            venue_id = st.number_input(
+                "Venue ID", min_value=1, value=1, step=1, key="admin_edit_event_venue_id"
+            )
+            load_col, delete_col = st.columns(2)
+            with load_col:
+                load_venue = st.button("🔎 Load Venue", use_container_width=True, key="admin_load_event_venue")
+            with delete_col:
+                delete_venue = st.button("🗑️ Delete Venue", use_container_width=True, key="admin_delete_event_venue")
+
+            if load_venue:
+                response = admin_api_get(f"/events/admin/venues/{int(venue_id)}")
+                if response is not None and response.status_code == 200:
+                    st.session_state.admin_edit_event_venue = response.json()
+                else:
+                    st.session_state.admin_edit_event_venue = None
+                    st.error(admin_error_message(response, "Venue not found."))
+
+            venue_data = st.session_state.get("admin_edit_event_venue")
+            if venue_data:
+                st.info(f"Editing Venue #{venue_data.get('id')} — {venue_data.get('name', '')}")
+                with st.form("admin_edit_event_venue_form"):
+                    e1, e2 = st.columns(2)
+                    with e1:
+                        edit_venue_name = st.text_input(
+                            "Venue Name", value=str(venue_data.get("name", "")), key="edit_event_venue_name"
+                        )
+                        edit_venue_city = st.text_input(
+                            "City", value=str(venue_data.get("city", "")), key="edit_event_venue_city"
+                        )
+                    with e2:
+                        edit_venue_address = st.text_input(
+                            "Address", value=str(venue_data.get("address", "")), key="edit_event_venue_address"
+                        )
+                        edit_venue_capacity = st.number_input(
+                            "Capacity", min_value=1,
+                            value=max(1, int(venue_data.get("capacity", 1) or 1)),
+                            step=100, key="edit_event_venue_capacity"
+                        )
+                    update_venue = st.form_submit_button(
+                        "💾 Save Venue Changes", type="primary", use_container_width=True
+                    )
+
+                if update_venue:
+                    payload = {
+                        "name": edit_venue_name.strip(),
+                        "city": edit_venue_city.strip(),
+                        "address": edit_venue_address.strip(),
+                        "capacity": int(edit_venue_capacity)
+                    }
+                    if not all([payload["name"], payload["city"], payload["address"]]):
+                        st.warning("Please fill all venue fields.")
+                    else:
+                        response = admin_api_request(
+                            "PUT", f"/events/admin/venues/{int(venue_id)}", payload
+                        )
+                        if response is not None and response.status_code == 200:
+                            st.success("Venue updated successfully! ✅")
+                            st.session_state.admin_edit_event_venue = response.json()
+                            st.rerun()
+                        else:
+                            st.error(admin_error_message(response, "Unable to update venue."))
+
+            if delete_venue:
+                response = admin_api_request(
+                    "DELETE", f"/events/admin/venues/{int(venue_id)}"
+                )
+                if response is not None and response.status_code == 200:
+                    st.success("Venue deleted successfully! 🗑️")
+                    st.session_state.admin_edit_event_venue = None
+                    st.rerun()
+                else:
+                    st.error(admin_error_message(response, "Unable to delete venue."))
+
+        # ========================================================
+        # SHOWS
+        # ========================================================
+        with event_tab3:
+            st.subheader("🕒 Event Show Management")
+            shows_response = admin_api_get("/events/admin/shows/all")
+            shows = (
+                shows_response.json()
+                if shows_response is not None and shows_response.status_code == 200
+                else []
+            )
+            if shows_response is not None and shows_response.status_code != 200:
+                st.error(admin_error_message(shows_response, "Unable to load event shows."))
+
+            events_response = admin_api_get("/events/admin/all")
+            events_for_show = (
+                events_response.json()
+                if events_response is not None and events_response.status_code == 200
+                else []
+            )
+            venues_response = admin_api_get("/events/admin/venues/all")
+            venues_for_show = (
+                venues_response.json()
+                if venues_response is not None and venues_response.status_code == 200
+                else []
+            )
+
+            event_lookup = {e["id"]: e.get("name", "") for e in events_for_show}
+            venue_lookup = {v["id"]: v.get("name", "") for v in venues_for_show}
+
+            if shows:
+                display_shows = []
+                for show in shows:
+                    row = dict(show)
+                    row["event"] = event_lookup.get(show.get("event_id"), f"Event #{show.get('event_id')}")
+                    row["venue"] = venue_lookup.get(show.get("venue_id"), f"Venue #{show.get('venue_id')}")
+                    display_shows.append(row)
+
+                show_df = pd.DataFrame(display_shows).rename(columns={
+                    "id": "Show ID",
+                    "event": "Event",
+                    "venue": "Venue",
+                    "event_id": "Event ID",
+                    "venue_id": "Venue ID",
+                    "show_date": "Date",
+                    "show_time": "Time",
+                    "ticket_type": "Ticket Type",
+                    "ticket_price": "Ticket Price",
+                    "total_tickets": "Total Tickets",
+                    "available_tickets": "Available Tickets",
+                    "created_at": "Created At"
+                })
+                if "Ticket Price" in show_df.columns:
+                    show_df["Ticket Price"] = show_df["Ticket Price"].apply(
+                        lambda x: f"₹{float(x):,.0f}"
+                    )
+                st.dataframe(show_df, use_container_width=True, hide_index=True)
+                st.success(f"Showing {len(shows)} show(s).")
+            else:
+                st.info("No event shows found.")
+
+            if not events_for_show or not venues_for_show:
+                st.warning("Create at least one event and one venue before adding a show.")
+            else:
+                event_options = {
+                    f"#{e['id']} — {e.get('name', '')}": e["id"] for e in events_for_show
+                }
+                venue_options = {
+                    f"#{v['id']} — {v.get('name', '')} ({v.get('city', '')})": v["id"] for v in venues_for_show
+                }
+
+                st.divider()
+                st.subheader("➕ Add Event Show")
+                with st.form("admin_add_event_show_form"):
+                    c1, c2 = st.columns(2)
+                    with c1:
+                        add_show_event = st.selectbox("Event", list(event_options.keys()), key="add_event_show_event")
+                        add_show_venue = st.selectbox("Venue", list(venue_options.keys()), key="add_event_show_venue")
+                        add_show_date = st.text_input("Show Date", placeholder="2026-12-25", key="add_event_show_date")
+                        add_show_time = st.text_input("Show Time", placeholder="07:00 PM", key="add_event_show_time")
+                    with c2:
+                        add_show_ticket_type = st.text_input("Ticket Type", placeholder="VIP", key="add_event_show_ticket_type")
+                        add_show_price = st.number_input("Ticket Price (₹)", min_value=1, value=999, step=50, key="add_event_show_price")
+                        add_show_total = st.number_input("Total Tickets", min_value=1, value=500, step=50, key="add_event_show_total")
+                        add_show_available = st.number_input("Available Tickets", min_value=0, value=500, step=50, key="add_event_show_available")
+
+                    create_show = st.form_submit_button(
+                        "🚀 Create Event Show", type="primary", use_container_width=True
+                    )
+
+                if create_show:
+                    if not add_show_date.strip() or not add_show_time.strip() or not add_show_ticket_type.strip():
+                        st.warning("Please fill date, time and ticket type.")
+                    elif int(add_show_available) > int(add_show_total):
+                        st.warning("Available tickets cannot exceed total tickets.")
+                    else:
+                        payload = {
+                            "event_id": int(event_options[add_show_event]),
+                            "venue_id": int(venue_options[add_show_venue]),
+                            "show_date": add_show_date.strip(),
+                            "show_time": add_show_time.strip(),
+                            "ticket_type": add_show_ticket_type.strip(),
+                            "ticket_price": int(add_show_price),
+                            "total_tickets": int(add_show_total),
+                            "available_tickets": int(add_show_available)
+                        }
+                        response = admin_api_request("POST", "/events/admin/shows/create", payload)
+                        if response is not None and response.status_code in [200, 201]:
+                            st.success("Event show created successfully! 🕒")
+                            st.rerun()
+                        else:
+                            st.error(admin_error_message(response, "Unable to create event show."))
+
+                st.divider()
+                st.subheader("✏️ Edit / Delete Event Show")
+                show_id = st.number_input(
+                    "Show ID", min_value=1, value=1, step=1, key="admin_edit_event_show_id"
+                )
+                load_col, delete_col = st.columns(2)
+                with load_col:
+                    load_show = st.button("🔎 Load Show", use_container_width=True, key="admin_load_event_show")
+                with delete_col:
+                    delete_show = st.button("🗑️ Delete Show", use_container_width=True, key="admin_delete_event_show")
+
+                if load_show:
+                    response = admin_api_get(f"/events/admin/shows/{int(show_id)}")
+                    if response is not None and response.status_code == 200:
+                        st.session_state.admin_edit_event_show = response.json()
+                    else:
+                        st.session_state.admin_edit_event_show = None
+                        st.error(admin_error_message(response, "Event show not found."))
+
+                show_data = st.session_state.get("admin_edit_event_show")
+                if show_data:
+                    st.info(f"Editing Show #{show_data.get('id')}")
+                    event_label_by_id = {v: k for k, v in event_options.items()}
+                    venue_label_by_id = {v: k for k, v in venue_options.items()}
+                    current_event_id = int(show_data.get("event_id", 0))
+                    current_venue_id = int(show_data.get("venue_id", 0))
+
+                    with st.form("admin_edit_event_show_form"):
+                        e1, e2 = st.columns(2)
+                        with e1:
+                            edit_show_event = st.selectbox(
+                                "Event", list(event_options.keys()),
+                                index=list(event_options.keys()).index(event_label_by_id[current_event_id])
+                                if current_event_id in event_label_by_id else 0,
+                                key="edit_event_show_event"
+                            )
+                            edit_show_venue = st.selectbox(
+                                "Venue", list(venue_options.keys()),
+                                index=list(venue_options.keys()).index(venue_label_by_id[current_venue_id])
+                                if current_venue_id in venue_label_by_id else 0,
+                                key="edit_event_show_venue"
+                            )
+                            edit_show_date = st.text_input(
+                                "Show Date", value=str(show_data.get("show_date", "")), key="edit_event_show_date"
+                            )
+                            edit_show_time = st.text_input(
+                                "Show Time", value=str(show_data.get("show_time", "")), key="edit_event_show_time"
+                            )
+                        with e2:
+                            edit_show_ticket_type = st.text_input(
+                                "Ticket Type", value=str(show_data.get("ticket_type", "")), key="edit_event_show_ticket_type"
+                            )
+                            edit_show_price = st.number_input(
+                                "Ticket Price (₹)", min_value=1,
+                                value=max(1, int(float(show_data.get("ticket_price", 1) or 1))),
+                                step=50, key="edit_event_show_price"
+                            )
+                            edit_show_total = st.number_input(
+                                "Total Tickets", min_value=1,
+                                value=max(1, int(show_data.get("total_tickets", 1) or 1)),
+                                step=50, key="edit_event_show_total"
+                            )
+                            edit_show_available = st.number_input(
+                                "Available Tickets", min_value=0,
+                                value=max(0, int(show_data.get("available_tickets", 0) or 0)),
+                                step=50, key="edit_event_show_available"
+                            )
+
+                        update_show = st.form_submit_button(
+                            "💾 Save Show Changes", type="primary", use_container_width=True
+                        )
+
+                    if update_show:
+                        if not edit_show_date.strip() or not edit_show_time.strip() or not edit_show_ticket_type.strip():
+                            st.warning("Please fill date, time and ticket type.")
+                        elif int(edit_show_available) > int(edit_show_total):
+                            st.warning("Available tickets cannot exceed total tickets.")
+                        else:
+                            payload = {
+                                "event_id": int(event_options[edit_show_event]),
+                                "venue_id": int(venue_options[edit_show_venue]),
+                                "show_date": edit_show_date.strip(),
+                                "show_time": edit_show_time.strip(),
+                                "ticket_type": edit_show_ticket_type.strip(),
+                                "ticket_price": int(edit_show_price),
+                                "total_tickets": int(edit_show_total),
+                                "available_tickets": int(edit_show_available)
+                            }
+                            response = admin_api_request(
+                                "PUT", f"/events/admin/shows/{int(show_id)}", payload
+                            )
+                            if response is not None and response.status_code == 200:
+                                st.success("Event show updated successfully! ✅")
+                                st.session_state.admin_edit_event_show = response.json()
+                                st.rerun()
+                            else:
+                                st.error(admin_error_message(response, "Unable to update event show."))
+
+                if delete_show:
+                    response = admin_api_request(
+                        "DELETE", f"/events/admin/shows/{int(show_id)}"
+                    )
+                    if response is not None and response.status_code == 200:
+                        st.success("Event show deleted successfully! 🗑️")
+                        st.session_state.admin_edit_event_show = None
+                        st.rerun()
+                    else:
+                        st.error(admin_error_message(response, "Unable to delete event show."))
+
+
+    elif st.session_state.page == "Admin Dashboard":
+
+        # ========================================================
+        # ADMIN DASHBOARD 2.0
+        # ========================================================
+
+        st.html("""
+        <div style="padding:28px;border-radius:24px;margin-bottom:24px;
+                    border:1px solid rgba(148,163,184,.18);
+                    background:linear-gradient(135deg,rgba(30,41,59,.96),rgba(15,23,42,.98));
+                    box-shadow:0 18px 45px rgba(0,0,0,.20);">
+            <div style="font-size:12px;font-weight:800;letter-spacing:1.5px;opacity:.65;">
+                TRAVELX • ADMIN CONTROL CENTER
+            </div>
+            <div style="font-size:34px;font-weight:900;margin:8px 0;">
+                👑 Welcome to TRAVELX Admin
+            </div>
+            <div style="font-size:15px;opacity:.72;line-height:1.6;">
+                Monitor users, bookings, revenue and every TRAVELX service from one place.
+            </div>
+        </div>
+        """)
+
+        dashboard_response = admin_api_get("/admin/dashboard")
+
+        if dashboard_response is None:
+            st.error("Unable to connect to the TRAVELX backend.")
+            st.stop()
+
+        if dashboard_response.status_code != 200:
+            st.error(
+                f"Unable to load admin dashboard. Status: {dashboard_response.status_code}"
+            )
+            st.stop()
+
+        dashboard_data = get_json(dashboard_response)
+
+        total_users = int(dashboard_data.get("total_users", 0) or 0)
+        total_bookings = int(dashboard_data.get("total_bookings", 0) or 0)
+        total_revenue = float(dashboard_data.get("total_revenue", 0) or 0)
+        total_cancelled = int(dashboard_data.get("total_cancelled", 0) or 0)
+        wallet_transactions = int(dashboard_data.get("wallet_transactions", 0) or 0)
+
+        active_bookings = max(total_bookings - total_cancelled, 0)
+        cancellation_rate = (
+            (total_cancelled / total_bookings) * 100
+            if total_bookings else 0
+        )
+        average_booking = (
+            total_revenue / total_bookings
+            if total_bookings else 0
+        )
+
+        # KPI cards
+        st.subheader("📊 Business Overview")
+        c1, c2, c3, c4, c5 = st.columns(5)
+
+        with c1:
+            st.metric("👥 Total Users", f"{total_users:,}")
+        with c2:
+            st.metric("📋 Total Bookings", f"{total_bookings:,}")
+        with c3:
+            st.metric("💰 Revenue", f"₹{total_revenue:,.0f}")
+        with c4:
+            st.metric("❌ Cancelled", f"{total_cancelled:,}")
+        with c5:
+            st.metric("💳 Wallet Transactions", f"{wallet_transactions:,}")
+
+        st.divider()
+
+        p1, p2, p3, p4 = st.columns(4)
+        with p1:
+            st.metric("🟢 Active Bookings", f"{active_bookings:,}")
+        with p2:
+            st.metric("📉 Cancellation Rate", f"{cancellation_rate:.1f}%")
+        with p3:
+            st.metric("💵 Avg Booking Value", f"₹{average_booking:,.0f}")
+        with p4:
+            services_for_top = dashboard_data.get("services", []) or []
+            top_service = "—"
+            if services_for_top:
+                top_service_row = max(
+                    services_for_top,
+                    key=lambda x: float(x.get("bookings", 0) or 0)
+                )
+                top_service = str(top_service_row.get("service", "—"))
+            st.metric("🏆 Top Service", top_service)
+
+        st.divider()
+
+        admin_tab1, admin_tab2, admin_tab3 = st.tabs([
+            "📊 Analytics",
+            "👥 Customers",
+            "📋 Bookings",
+        ])
+
+        with admin_tab1:
+            st.subheader("📈 Service Performance")
+
+            services = dashboard_data.get("services", []) or []
+
+            if services:
+                service_df = pd.DataFrame(services)
+
+                if "bookings" in service_df.columns:
+                    service_df["bookings"] = pd.to_numeric(
+                        service_df["bookings"], errors="coerce"
+                    ).fillna(0)
+
+                if "revenue" in service_df.columns:
+                    service_df["revenue"] = pd.to_numeric(
+                        service_df["revenue"], errors="coerce"
+                    ).fillna(0)
+
+                if "service" not in service_df.columns:
+                    service_df["service"] = "Unknown"
+
+                chart1, chart2 = st.columns(2)
+
+                with chart1:
+                    st.markdown("### 📈 Bookings by Service")
+                    if "bookings" in service_df.columns:
+                        st.bar_chart(
+                            service_df[["service", "bookings"]].set_index("service"),
+                            use_container_width=True
+                        )
+
+                with chart2:
+                    st.markdown("### 💰 Revenue by Service")
+                    if "revenue" in service_df.columns:
+                        st.bar_chart(
+                            service_df[["service", "revenue"]].set_index("service"),
+                            use_container_width=True
+                        )
+
+                st.markdown("### 📋 Service Breakdown")
+                display_df = service_df.copy()
+                if "revenue" in display_df.columns:
+                    display_df["revenue"] = display_df["revenue"].apply(
+                        lambda value: f"₹{float(value):,.2f}"
+                    )
+                display_df = display_df.rename(columns={
+                    "service": "Service",
+                    "bookings": "Bookings",
+                    "revenue": "Revenue",
+                })
+                st.dataframe(
+                    display_df,
+                    use_container_width=True,
+                    hide_index=True
+                )
+            else:
+                st.info("No service analytics available yet.")
+
+        with admin_tab2:
+            st.subheader("👥 Customer Management")
+            st.caption("Search and inspect registered TRAVELX customers.")
+
+            search_col, refresh_col = st.columns([5, 1])
+
+            with search_col:
+                user_search = st.text_input(
+                    "Search users",
+                    placeholder="Name, email or phone...",
+                    key="step8_admin_user_search"
+                )
+
+            with refresh_col:
+                st.write("")
+                if st.button(
+                    "🔄 Refresh",
+                    key="step8_admin_refresh_users",
+                    use_container_width=True
+                ):
+                    st.rerun()
+
+            endpoint = "/admin/users"
+            if user_search.strip():
+                from urllib.parse import quote
+                endpoint += "?search=" + quote(user_search.strip())
+
+            users_response = admin_api_get(endpoint)
+
+            if users_response is None:
+                st.warning("Unable to load users.")
+            elif users_response.status_code == 200:
+                users_data = get_json(users_response)
+
+                if users_data:
+                    users_df = pd.DataFrame(users_data).rename(columns={
+                        "id": "User ID",
+                        "name": "Name",
+                        "email": "Email",
+                        "phone": "Phone",
+                        "created_at": "Registered",
+                    })
+                    st.dataframe(
+                        users_df,
+                        use_container_width=True,
+                        hide_index=True
+                    )
+                    st.success(f"Showing {len(users_data)} user(s).")
+                else:
+                    st.info("No users matched your search.")
+            else:
+                st.error(
+                    f"Unable to load users. Status: {users_response.status_code}"
+                )
+
+        with admin_tab3:
+            st.subheader("📋 Booking Management")
+            st.caption("View bookings across every TRAVELX service from one place.")
+
+            filter_col1, filter_col2, filter_col3 = st.columns([2, 2, 4])
+
+            with filter_col1:
+                service_filter = st.selectbox(
+                    "Service",
+                    ["All", "Bus", "Train", "Hotel", "Flight", "Cab", "Food", "Movies", "Events", "General"],
+                    key="step8_admin_service_filter"
+                )
+
+            with filter_col2:
+                status_filter = st.selectbox(
+                    "Status",
+                    ["All", "confirmed", "booked", "pending", "cancelled"],
+                    key="step8_admin_status_filter"
+                )
+
+            with filter_col3:
+                booking_search = st.text_input(
+                    "Search bookings",
+                    placeholder="Booking ID, user name or email...",
+                    key="step8_admin_booking_search"
+                )
+
+            from urllib.parse import quote
+            params = [
+                "service=" + quote(service_filter),
+                "status=" + quote(status_filter),
+            ]
+            if booking_search.strip():
+                params.append("search=" + quote(booking_search.strip()))
+
+            bookings_response = admin_api_get(
+                "/admin/bookings?" + "&".join(params)
+            )
+
+            if bookings_response is None:
+                st.warning("Unable to load bookings.")
+            elif bookings_response.status_code == 200:
+                bookings_data = get_json(bookings_response)
+
+                if bookings_data:
+                    booking_df = pd.DataFrame(bookings_data).rename(columns={
+                        "id": "Booking ID",
+                        "service": "Service",
+                        "user_id": "User ID",
+                        "user_name": "Customer",
+                        "user_email": "Email",
+                        "amount": "Amount",
+                        "status": "Status",
+                        "payment_method": "Payment",
+                        "created_at": "Created",
+                    })
+
+                    if "Amount" in booking_df.columns:
+                        booking_df["Amount"] = booking_df["Amount"].apply(
+                            lambda value: f"₹{float(value):,.2f}"
+                        )
+
+                    st.dataframe(
+                        booking_df,
+                        use_container_width=True,
+                        hide_index=True
+                    )
+                    st.success(f"Showing {len(bookings_data)} booking(s).")
+                else:
+                    st.info("No bookings matched the selected filters.")
+            else:
+                st.error(
+                    f"Unable to load bookings. Status: {bookings_response.status_code}"
+                )
+
+        st.divider()
+        st.subheader("⚡ Quick Actions")
+
+        q1, q2, q3, q4 = st.columns(4)
+
+        quick_actions = [
+            (q1, "🚌 Manage Buses", "Admin Buses", "step8_quick_buses"),
+            (q2, "✈️ Manage Flights", "Admin Flights", "step8_quick_flights"),
+            (q3, "🏨 Manage Hotels", "Admin Hotels", "step8_quick_hotels"),
+            (q4, "🎟️ Manage Events", "Admin Events", "step8_quick_events"),
+        ]
+
+        for column, label, page_name, button_key in quick_actions:
+            with column:
+                if st.button(label, use_container_width=True, key=button_key):
+                    st.session_state.page = page_name
+                    st.rerun()
+
+        st.caption("TRAVELX Admin • Control • Analyze • Manage")
+
+    else:
+        st.session_state.page = "Admin Dashboard"
+        st.rerun()
+
     st.stop()
 
 
@@ -1041,6 +5286,15 @@ with st.sidebar:
         ("🎟️", "Events"),
         ("🤖", "AI Trip Planner"),
         ("💰", "Wallet"),
+        (
+            "🔔",
+            (
+                f"Notifications "
+                f"({st.session_state.notification_unread_count})"
+                if st.session_state.notification_unread_count > 0
+                else "Notifications"
+            )
+        ),
         ("📋", "My Bookings"),
         ("👤", "Profile")
     ]
@@ -1053,7 +5307,10 @@ with st.sidebar:
             key=f"sidebar_{page_name}"
         ):
 
-            st.session_state.page = page_name
+            if page_name.startswith("Notifications"):
+                st.session_state.page = "Notifications"
+            else:
+                st.session_state.page = page_name
 
             st.rerun()
 
@@ -1068,578 +5325,401 @@ with st.sidebar:
 
 
 # ============================================================
-# HOME
+# HOME — STEP 7 PREMIUM DASHBOARD
 # ============================================================
 
 if st.session_state.page == "Home":
 
     user_name = (
-        st.session_state.user.get(
-            "name",
-            "Traveler"
-        )
+        st.session_state.user.get("name", "Traveler")
         if st.session_state.user
         else "Traveler"
     )
 
+    # --------------------------------------------------------
+    # DATA HELPERS
+    # --------------------------------------------------------
+    def _home_list(endpoint):
+        response = api_get(endpoint)
+        if response and response.status_code == 200:
+            data = get_json(response)
+            if isinstance(data, list):
+                return data
+        return []
+
+    def _home_first(item, *keys, default=""):
+        if not isinstance(item, dict):
+            return default
+        for key in keys:
+            value = item.get(key)
+            if value not in (None, ""):
+                return value
+        return default
+
+    def _home_status(item):
+        return str(_home_first(item, "status", "booking_status", "order_status", default="Confirmed")).replace("_", " ").title()
+
+    def _home_amount(item):
+        value = _home_first(
+            item,
+            "total_amount", "amount", "price", "fare", "total_price",
+            "total_fare", "booking_amount", "grand_total",
+            default=0
+        )
+        try:
+            return float(value or 0)
+        except (TypeError, ValueError):
+            return 0.0
+
+    def _home_date(item):
+        value = _home_first(
+            item,
+            "travel_date", "journey_date", "booking_date", "show_date",
+            "event_date", "date", "check_in", "checkin", "departure_date",
+            "start_date", default=""
+        )
+        return str(value) if value else ""
+
+    def _home_date_label(value):
+        if not value:
+            return "Date not available"
+        raw = str(value).strip()
+        try:
+            parsed = date.fromisoformat(raw[:10])
+            return parsed.strftime("%d %b %Y")
+        except Exception:
+            return raw[:16].replace("T", " ")
+
+    def _home_sort_value(item):
+        value = _home_first(item, "created_at", "booking_date", "travel_date", "journey_date", "show_date", "event_date", "date", default="")
+        return str(value or "")
 
     # --------------------------------------------------------
     # HERO
     # --------------------------------------------------------
-
     st.html(f"""
-    <div class="hero-box">
-
-        <div class="hero-badge">
-            ✨ YOUR JOURNEY STARTS HERE
+    <div class="hero-box" style="padding:34px 38px; margin-bottom:18px;">
+        <div style="display:flex; justify-content:space-between; gap:24px; align-items:center; flex-wrap:wrap;">
+            <div style="flex:1; min-width:280px;">
+                <div class="hero-badge">✨ YOUR JOURNEY STARTS HERE</div>
+                <div class="hero-title" style="font-size:42px; margin-top:12px;">
+                    Welcome back, {user_name} ✈️
+                </div>
+                <div class="hero-text" style="max-width:760px; margin-top:10px;">
+                    Plan, book and manage your complete journey from one powerful travel dashboard.
+                    Flights, trains, buses, hotels, cabs, food, movies, events and AI — all in TRAVELX.
+                </div>
+            </div>
+            <div style="min-width:210px; text-align:center; padding:20px; border-radius:20px; background:rgba(255,255,255,0.07); border:1px solid rgba(255,255,255,0.10);">
+                <div style="font-size:42px;">🌍</div>
+                <div style="font-size:13px; opacity:.75; margin-top:6px;">YOUR ALL-IN-ONE</div>
+                <div style="font-size:20px; font-weight:700;">TRAVEL COMPANION</div>
+            </div>
         </div>
-
-        <div class="hero-title">
-            Travel Smarter, {user_name} ✈️
-        </div>
-
-        <div class="hero-text">
-            Book buses, trains, flights, hotels, cabs,
-            food, movies and events — all from one place.
-            Let TRAVELX simplify your entire journey.
-        </div>
-
     </div>
     """)
 
-
     # --------------------------------------------------------
-    # QUICK ACTIONS
+    # DESTINATION SEARCH
     # --------------------------------------------------------
-
     st.html("""
-    <div class="section-heading">
-        Quick Actions
-    </div>
-
-    <div class="section-subtitle">
-        Jump directly to your most-used TRAVELX features.
-    </div>
+    <div class="section-heading">Where do you want to go?</div>
+    <div class="section-subtitle">Start with a destination and let TRAVELX take you from discovery to booking.</div>
     """)
 
-    quick1, quick2, quick3, quick4 = st.columns(4)
-
-    with quick1:
-
-        if st.button(
-            "🚌 Book a Bus",
-            use_container_width=True,
-            key="quick_bus"
-        ):
-
-            st.session_state.page = "Buses"
-            st.rerun()
-
-    with quick2:
-
-        if st.button(
-            "💰 Add Money",
-            use_container_width=True,
-            key="quick_wallet"
-        ):
-
-            st.session_state.page = "Wallet"
-            st.rerun()
-
-    with quick3:
-
-        if st.button(
-            "📋 My Bookings",
-            use_container_width=True,
-            key="quick_bookings"
-        ):
-
-            st.session_state.page = "My Bookings"
-            st.rerun()
-
-    with quick4:
-
-        if st.button(
-            "🤖 Plan a Trip",
-            use_container_width=True,
-            key="quick_ai"
-        ):
-
-            st.session_state.page = "AI Trip Planner"
-            st.rerun()
-
+    destination_col, destination_btn = st.columns([5, 1.25])
+    with destination_col:
+        destination = st.text_input(
+            "",
+            placeholder="Search a destination — Hyderabad, Goa, Delhi, Mumbai...",
+            key="home_destination_search",
+            label_visibility="collapsed"
+        )
+    with destination_btn:
+        if st.button("🔎 Explore", use_container_width=True, key="home_explore_destination"):
+            if destination.strip():
+                st.session_state.hotel_city = destination.strip()
+                st.session_state.page = "Hotels"
+                st.rerun()
+            else:
+                st.warning("Enter a destination first.")
 
     # --------------------------------------------------------
-    # DASHBOARD DATA
+    # QUICK BOOKING GRID
     # --------------------------------------------------------
-
-    wallet_balance = 0.0
-    booking_count = 0
-    bus_booking_count = 0
-    train_booking_count = 0
-    flight_booking_count = 0
-    cab_booking_count = 0
-    food_order_count = 0
-    event_booking_count = 0
-
-
-    # ========================================================
-    # EVENT BOOKINGS COUNT
-    # ========================================================
-
-    event_booking_response = api_get(
-        "/events/my-bookings"
-    )
-
-    if (
-        event_booking_response
-        and event_booking_response.status_code == 200
-    ):
-        event_booking_data = get_json(
-            event_booking_response
-        )
-
-        if isinstance(event_booking_data, list):
-            event_booking_count = len(event_booking_data)
-
-
-    # ========================================================
-    # LIVE WALLET
-    # ========================================================
-
-    wallet_response = api_get(
-        "/wallet/"
-    )
-
-    if (
-        wallet_response
-        and wallet_response.status_code == 200
-    ):
-
-        wallet_data = get_json(
-            wallet_response
-        )
-
-        wallet_balance = float(
-            wallet_data.get(
-                "balance",
-                0
-            )
-        )
-
-
-    # ========================================================
-    # MOVIE BOOKINGS COUNT
-    # ========================================================
-
-    movie_booking_count = 0
-
-    movie_booking_response = api_get(
-        "/movies/my-bookings"
-    )
-
-    if (
-        movie_booking_response
-        and movie_booking_response.status_code == 200
-    ):
-        movie_booking_data = get_json(
-            movie_booking_response
-        )
-
-        if isinstance(
-            movie_booking_data,
-            list
-        ):
-            movie_booking_count = len(
-                movie_booking_data
-            )
-
-    elif movie_booking_response:
-        st.warning(
-            "Unable to load movie booking count."
-        )
-
-
-    # ========================================================
-    # BUS BOOKINGS
-    # ========================================================
-
-    bus_response = api_get(
-        "/buses/my-bookings"
-    )
-
-    if (
-        bus_response
-        and bus_response.status_code == 200
-    ):
-
-        bus_booking_data = get_json(
-            bus_response
-        )
-
-        if isinstance(
-            bus_booking_data,
-            list
-        ):
-
-            bus_booking_count = len(
-                bus_booking_data
-            )
-
-
-    # ========================================================
-    # TRAIN BOOKINGS COUNT
-    # ========================================================
-
-    train_count_response = api_get(
-        "/trains/my-bookings"
-    )
-
-    if (
-        train_count_response
-        and train_count_response.status_code == 200
-    ):
-        train_booking_data = get_json(
-            train_count_response
-        )
-
-        if isinstance(
-            train_booking_data,
-            list
-        ):
-            train_booking_count = len(
-                train_booking_data
-            )
-
-    # ========================================================
-    # FLIGHT BOOKINGS COUNT
-    # ========================================================
-
-    flight_count_response = api_get(
-        "/flights/my-bookings"
-    )
-
-    if (
-        flight_count_response
-        and flight_count_response.status_code == 200
-    ):
-
-        flight_booking_data = get_json(
-            flight_count_response
-        )
-
-        if isinstance(
-            flight_booking_data,
-            list
-        ):
-
-            flight_booking_count = len(
-                flight_booking_data
-            )
-
-    # ========================================================
-    # CAB BOOKINGS COUNT
-    # ========================================================
-
-    cab_count_response = api_get(
-        "/cabs/my-bookings"
-    )
-
-    if (
-        cab_count_response
-        and cab_count_response.status_code == 200
-    ):
-
-        cab_booking_data = get_json(
-            cab_count_response
-        )
-
-        if isinstance(
-            cab_booking_data,
-            list
-        ):
-
-            cab_booking_count = len(
-                cab_booking_data
-            )
-
-
-    # ========================================================
-    # FOOD ORDERS COUNT
-    # ========================================================
-
-    food_count_response = api_get(
-        "/food/my-orders"
-    )
-
-    if (
-        food_count_response
-        and food_count_response.status_code == 200
-    ):
-
-        food_order_data = get_json(
-            food_count_response
-        )
-
-        if isinstance(
-            food_order_data,
-            list
-        ):
-
-            food_order_count = len(
-                food_order_data
-            )
-
-
-    # ========================================================
-    # GENERIC BOOKINGS
-    # ========================================================
-
-    booking_response = api_get(
-        "/bookings/my"
-    )
-
-    if (
-        booking_response
-        and booking_response.status_code == 200
-    ):
-
-        booking_data = get_json(
-            booking_response
-        )
-
-        if isinstance(
-            booking_data,
-            list
-        ):
-
-            booking_count = len(
-                booking_data
-            )
-
-
-    total_bookings = (
-        bus_booking_count
-        + train_booking_count
-        + flight_booking_count
-        + cab_booking_count
-        + food_order_count
-        + movie_booking_count
-        + event_booking_count
-        + booking_count
-    )
-
-
-    # --------------------------------------------------------
-    # OVERVIEW
-    # --------------------------------------------------------
-
     st.html("""
-    <div class="section-heading">
-        Your TRAVELX Overview
-    </div>
-
-    <div class="section-subtitle">
-        A quick look at your travel activity.
-    </div>
+    <div class="section-heading">Book in One Tap</div>
+    <div class="section-subtitle">Your most important TRAVELX services, right at your fingertips.</div>
     """)
 
-    metric1, metric2, metric3, metric4 = st.columns(4)
-
-    with metric1:
-
-        st.html(f"""
-        <div class="metric-card">
-
-            <div class="metric-label">
-                Wallet Balance
-            </div>
-
-            <div class="metric-value">
-                ₹{wallet_balance:,.2f}
-            </div>
-
-        </div>
-        """)
-
-    with metric2:
-
-        st.html(f"""
-        <div class="metric-card">
-
-            <div class="metric-label">
-                Total Bookings
-            </div>
-
-            <div class="metric-value">
-                {total_bookings}
-            </div>
-
-        </div>
-        """)
-
-    with metric3:
-
-        st.html(f"""
-        <div class="metric-card">
-
-            <div class="metric-label">
-                Flight Bookings
-            </div>
-
-            <div class="metric-value">
-                {flight_booking_count}
-            </div>
-
-        </div>
-        """)
-
-    with metric4:
-
-        st.html("""
-        <div class="metric-card">
-
-            <div class="metric-label">
-                Smart Planning
-            </div>
-
-            <div class="metric-value">
-                AI 🤖
-            </div>
-
-        </div>
-        """)
-
-
-    # --------------------------------------------------------
-    # SERVICES
-    # --------------------------------------------------------
-
-    st.html("""
-    <div class="section-heading">
-        Explore TRAVELX
-    </div>
-
-    <div class="section-subtitle">
-        Everything you need for your journey, under one roof.
-    </div>
-    """)
-
-    services = [
-        ("✈️", "Flights", "Search and book flights."),
+    quick_services = [
+        ("✈️", "Flights", "Compare and book flights."),
         ("🚆", "Trains", "Plan your railway journey."),
         ("🚌", "Buses", "Book intercity buses."),
-        ("🏨", "Hotels", "Find your perfect stay."),
-        ("🚕", "Cabs", "Book local and outstation cabs."),
-        ("🍔", "Food", "Order food while travelling."),
-        ("🎬", "Movies", "Book movie tickets."),
-        ("🎟️", "Events", "Discover events."),
-        ("🤖", "AI Trip Planner", "Create smart travel plans."),
-        ("💰", "Wallet", "Manage your TRAVELX money."),
-        ("📋", "My Bookings", "View all your bookings."),
-        ("👤", "Profile", "Manage your account.")
+        ("🏨", "Hotels", "Find a comfortable stay."),
+        ("🚕", "Cabs", "Book local and outstation rides."),
+        ("🍔", "Food", "Order food on the go."),
+        ("🎬", "Movies", "Book your next movie."),
+        ("🎟️", "Events", "Discover live experiences."),
     ]
 
-    for row in range(
-        0,
-        len(services),
-        3
-    ):
-
-        columns = st.columns(3)
-
-        for index, column in enumerate(columns):
-
+    for row in range(0, len(quick_services), 4):
+        cols = st.columns(4)
+        for index, col in enumerate(cols):
             service_index = row + index
-
-            if service_index >= len(services):
+            if service_index >= len(quick_services):
                 continue
-
-            icon, title, description = services[
-                service_index
-            ]
-
-            with column:
-
+            icon, title, description = quick_services[service_index]
+            with col:
                 st.html(f"""
-                <div class="service-card">
-
-                    <div class="service-icon">
-                        {icon}
-                    </div>
-
-                    <div class="service-title">
-                        {title}
-                    </div>
-
-                    <div class="service-description">
-                        {description}
-                    </div>
-
+                <div class="service-card" style="min-height:150px;">
+                    <div class="service-icon">{icon}</div>
+                    <div class="service-title">{title}</div>
+                    <div class="service-description">{description}</div>
                 </div>
                 """)
-
-                if st.button(
-                    f"Open {title}",
-                    use_container_width=True,
-                    key=f"service_{title}"
-                ):
-
+                if st.button(f"Open {title}", use_container_width=True, key=f"home_quick_{title}"):
                     st.session_state.page = title
                     st.rerun()
 
+    # --------------------------------------------------------
+    # LOAD DASHBOARD ACTIVITY
+    # --------------------------------------------------------
+    endpoint_map = {
+        "Flights": "/flights/my-bookings",
+        "Trains": "/trains/my-bookings",
+        "Buses": "/buses/my-bookings",
+        "Hotels": "/hotels/my-bookings",
+        "Cabs": "/cabs/my-bookings",
+        "Food": "/food/my-orders",
+        "Movies": "/movies/my-bookings",
+        "Events": "/events/my-bookings",
+        "Other": "/bookings/my",
+    }
+
+    home_activity = []
+    service_data = {}
+    for service_name, endpoint in endpoint_map.items():
+        items = _home_list(endpoint)
+        service_data[service_name] = items
+        for item in items:
+            if isinstance(item, dict):
+                item_copy = dict(item)
+                item_copy["_service"] = service_name
+                home_activity.append(item_copy)
+
+    wallet_balance = 0.0
+    wallet_response = api_get("/wallet/")
+    if wallet_response and wallet_response.status_code == 200:
+        wallet_data = get_json(wallet_response)
+        if isinstance(wallet_data, dict):
+            try:
+                wallet_balance = float(wallet_data.get("balance", 0) or 0)
+            except (TypeError, ValueError):
+                wallet_balance = 0.0
+
+    total_bookings = len(home_activity)
+    active_journeys = sum(
+        1 for item in home_activity
+        if _home_status(item).lower() in {"confirmed", "pending", "booked", "active"}
+    )
+    total_spend = sum(_home_amount(item) for item in home_activity if _home_status(item).lower() != "cancelled")
+
+    # --------------------------------------------------------
+    # SNAPSHOT METRICS
+    # --------------------------------------------------------
+    st.html("""
+    <div class="section-heading">Your Travel Snapshot</div>
+    <div class="section-subtitle">A live overview of your TRAVELX activity.</div>
+    """)
+
+    m1, m2, m3, m4 = st.columns(4)
+    metric_values = [
+        ("💰", "Wallet Balance", f"₹{wallet_balance:,.2f}"),
+        ("📋", "Total Activity", str(total_bookings)),
+        ("🧳", "Active Journeys", str(active_journeys)),
+        ("💳", "Travel Spend", f"₹{total_spend:,.2f}"),
+    ]
+    for col, (icon, label, value) in zip((m1, m2, m3, m4), metric_values):
+        with col:
+            st.html(f"""
+            <div class="metric-card" style="min-height:130px;">
+                <div style="font-size:22px; margin-bottom:5px;">{icon}</div>
+                <div class="metric-label">{label}</div>
+                <div class="metric-value">{value}</div>
+            </div>
+            """)
+
+    # --------------------------------------------------------
+    # WALLET + AI PROMO
+    # --------------------------------------------------------
+    wallet_col, ai_col = st.columns(2)
+    with wallet_col:
+        st.html(f"""
+        <div class="service-card" style="min-height:180px; padding:24px;">
+            <div style="font-size:30px;">💰</div>
+            <div style="font-size:22px; font-weight:800; margin-top:5px;">TRAVELX Wallet</div>
+            <div style="opacity:.7; margin:5px 0 14px;">Ready for your next booking.</div>
+            <div style="font-size:30px; font-weight:800;">₹{wallet_balance:,.2f}</div>
+        </div>
+        """)
+        if st.button("💳 Manage Wallet", use_container_width=True, key="home_manage_wallet"):
+            st.session_state.page = "Wallet"
+            st.rerun()
+
+    with ai_col:
+        st.html("""
+        <div class="service-card" style="min-height:180px; padding:24px;">
+            <div style="font-size:30px;">🤖</div>
+            <div style="font-size:22px; font-weight:800; margin-top:5px;">AI Trip Planner</div>
+            <div style="opacity:.7; margin:5px 0 14px;">Build a smarter itinerary around your destination, time and budget.</div>
+            <div style="font-size:16px; font-weight:700;">Plan less. Explore more. ✨</div>
+        </div>
+        """)
+        if st.button("🤖 Plan My Trip", use_container_width=True, key="home_plan_trip"):
+            st.session_state.page = "AI Trip Planner"
+            st.rerun()
+
+    # --------------------------------------------------------
+    # UPCOMING / RECENT ACTIVITY
+    # --------------------------------------------------------
+    st.html("""
+    <div class="section-heading">Your Journey Activity</div>
+    <div class="section-subtitle">Your latest bookings and orders across TRAVELX.</div>
+    """)
+
+    recent_items = sorted(home_activity, key=_home_sort_value, reverse=True)[:6]
+    if recent_items:
+        for row in range(0, len(recent_items), 2):
+            cols = st.columns(2)
+            for index, col in enumerate(cols):
+                item_index = row + index
+                if item_index >= len(recent_items):
+                    continue
+                item = recent_items[item_index]
+                service = item.get("_service", "Booking")
+                status = _home_status(item)
+                booking_id = _home_first(item, "id", "booking_id", "order_id", default="—")
+                amount = _home_amount(item)
+                activity_date = _home_date(item)
+                location = _home_first(item, "route", "source", "destination", "city", "hotel_name", "restaurant_name", "movie_title", "event_name", default="TRAVELX booking")
+                icon_map = {"Flights":"✈️", "Trains":"🚆", "Buses":"🚌", "Hotels":"🏨", "Cabs":"🚕", "Food":"🍔", "Movies":"🎬", "Events":"🎟️", "Other":"📋"}
+                icon = icon_map.get(service, "📋")
+                with col:
+                    st.html(f"""
+                    <div class="service-card" style="min-height:155px; padding:20px;">
+                        <div style="display:flex; justify-content:space-between; gap:10px; align-items:flex-start;">
+                            <div>
+                                <div style="font-size:27px;">{icon}</div>
+                                <div style="font-size:19px; font-weight:800; margin-top:5px;">{service}</div>
+                            </div>
+                            <div style="font-size:12px; padding:6px 10px; border-radius:999px; background:rgba(255,255,255,.08);">{status}</div>
+                        </div>
+                        <div style="margin-top:10px; opacity:.75;">Booking #{booking_id}</div>
+                        <div style="margin-top:4px; font-weight:600;">{str(location)[:70]}</div>
+                        <div style="display:flex; justify-content:space-between; margin-top:10px; opacity:.8; font-size:13px;">
+                            <span>{_home_date_label(activity_date)}</span>
+                            <span>₹{amount:,.2f}</span>
+                        </div>
+                    </div>
+                    """)
+    else:
+        st.html("""
+        <div class="service-card" style="padding:28px; text-align:center;">
+            <div style="font-size:38px;">🧳</div>
+            <div style="font-size:22px; font-weight:800; margin-top:8px;">Your journey starts here</div>
+            <div style="opacity:.7; margin-top:6px;">You don't have any activity yet. Pick a service above and make your first booking.</div>
+        </div>
+        """)
+
+    if st.button("📋 View All My Bookings", use_container_width=True, key="home_view_all_bookings"):
+        st.session_state.page = "My Bookings"
+        st.rerun()
+
+    # --------------------------------------------------------
+    # SERVICE BREAKDOWN
+    # --------------------------------------------------------
+    st.html("""
+    <div class="section-heading">Service Breakdown</div>
+    <div class="section-subtitle">See where you've been using TRAVELX.</div>
+    """)
+
+    service_counts = [
+        ("✈️", "Flights", len(service_data["Flights"])),
+        ("🚆", "Trains", len(service_data["Trains"])),
+        ("🚌", "Buses", len(service_data["Buses"])),
+        ("🏨", "Hotels", len(service_data["Hotels"])),
+        ("🚕", "Cabs", len(service_data["Cabs"])),
+        ("🍔", "Food", len(service_data["Food"])),
+        ("🎬", "Movies", len(service_data["Movies"])),
+        ("🎟️", "Events", len(service_data["Events"])),
+    ]
+
+    for row in range(0, len(service_counts), 4):
+        cols = st.columns(4)
+        for index, col in enumerate(cols):
+            item_index = row + index
+            if item_index >= len(service_counts):
+                continue
+            icon, label, count = service_counts[item_index]
+            with col:
+                st.html(f"""
+                <div class="metric-card" style="min-height:105px;">
+                    <div style="font-size:20px;">{icon}</div>
+                    <div class="metric-label">{label}</div>
+                    <div class="metric-value" style="font-size:28px;">{count}</div>
+                </div>
+                """)
+
+    # --------------------------------------------------------
+    # DISCOVER MORE
+    # --------------------------------------------------------
+    st.html("""
+    <div class="section-heading">Discover More</div>
+    <div class="section-subtitle">Tools that make TRAVELX more than a booking app.</div>
+    """)
+
+    discover = [
+        ("🤖", "AI Trip Planner", "Create a personalized itinerary in seconds.", "AI Trip Planner"),
+        ("💰", "TRAVELX Wallet", "Keep money ready and simplify payments.", "Wallet"),
+        ("🔔", "Notifications", "Stay updated about bookings and payments.", "Notifications"),
+        ("📋", "My Bookings", "Manage every booking from one place.", "My Bookings"),
+    ]
+
+    cols = st.columns(4)
+    for col, (icon, title, description, target) in zip(cols, discover):
+        with col:
+            st.html(f"""
+            <div class="service-card" style="min-height:150px;">
+                <div class="service-icon">{icon}</div>
+                <div class="service-title">{title}</div>
+                <div class="service-description">{description}</div>
+            </div>
+            """)
+            if st.button(f"Open {title}", use_container_width=True, key=f"home_discover_{title}"):
+                st.session_state.page = target
+                st.rerun()
 
     # --------------------------------------------------------
     # WHY TRAVELX
     # --------------------------------------------------------
-
     st.html("""
-    <div class="section-heading">
-        Why TRAVELX?
-    </div>
-
-    <div class="section-subtitle">
-        One platform designed around your entire journey.
-    </div>
+    <div class="section-heading">Why TRAVELX?</div>
+    <div class="section-subtitle">One platform designed around your entire journey.</div>
     """)
 
     why1, why2, why3, why4 = st.columns(4)
-
-    with why1:
-
-        st.markdown("### ⚡")
-        st.write("**Fast & Simple**")
-
-        st.caption(
-            "Manage your journey without switching between multiple applications."
-        )
-
-    with why2:
-
-        st.markdown("### 🔐")
-        st.write("**Secure Account**")
-
-        st.caption(
-            "Your account and bookings are protected through authentication."
-        )
-
-    with why3:
-
-        st.markdown("### 💰")
-        st.write("**Digital Wallet**")
-
-        st.caption(
-            "Keep your TRAVELX balance ready for future bookings."
-        )
-
-    with why4:
-
-        st.markdown("### 🤖")
-        st.write("**AI Powered**")
-
-        st.caption(
-            "Build personalized travel plans with intelligent assistance."
-        )
+    why_items = [
+        (why1, "⚡", "Fast & Simple", "Plan and manage your journey without switching between multiple applications."),
+        (why2, "🔐", "Secure Account", "Your account, bookings and payments are managed through the TRAVELX platform."),
+        (why3, "💰", "Digital Wallet", "Keep your TRAVELX balance ready for future bookings and refunds."),
+        (why4, "🤖", "AI Powered", "Use intelligent trip planning to turn your travel ideas into practical itineraries."),
+    ]
+    for col, icon, title, description in why_items:
+        with col:
+            st.markdown(f"### {icon}")
+            st.write(f"**{title}**")
+            st.caption(description)
 
 
 # ============================================================
@@ -5669,1181 +9749,1533 @@ elif st.session_state.page == "Wallet":
 
 
 # ============================================================
-# MY BOOKINGS
+# MY BOOKINGS - UNIFIED DASHBOARD
 # ============================================================
+
+
+elif st.session_state.page == "Notifications":
+
+    st.title("🔔 TRAVELX Notifications")
+    st.caption("Stay updated with your bookings, payments, cancellations and refunds.")
+
+    notifications_response = api_get("/notifications/")
+    unread_response = api_get("/notifications/unread-count")
+
+    notifications = []
+
+    if notifications_response and notifications_response.status_code == 200:
+        data = get_json(notifications_response)
+        if isinstance(data, list):
+            notifications = data
+    elif notifications_response:
+        st.error("Unable to load notifications.")
+
+    if unread_response and unread_response.status_code == 200:
+        unread_data = get_json(unread_response)
+        st.session_state.notification_unread_count = int(
+            unread_data.get("unread_count", 0)
+        )
+
+    unread_count = st.session_state.notification_unread_count
+
+    header_left, header_right = st.columns([3, 1])
+
+    with header_left:
+        if unread_count > 0:
+            st.info(f"🔵 {unread_count} unread notification(s)")
+        else:
+            st.success("✅ You're all caught up.")
+
+    with header_right:
+        if st.button(
+            "🔄 Refresh",
+            use_container_width=True,
+            key="refresh_notifications"
+        ):
+            st.rerun()
+
+    st.divider()
+
+    # ------------------------------------------------------------
+    # MARK ALL AS READ
+    # ------------------------------------------------------------
+    if notifications and unread_count > 0:
+        if st.button(
+            "✓✓ Mark All as Read",
+            use_container_width=True,
+            key="mark_all_notifications"
+        ):
+            response = api_patch("/notifications/read-all")
+
+            if response and response.status_code == 200:
+                st.session_state.notification_unread_count = 0
+                st.success("All notifications marked as read. ✅")
+                st.rerun()
+            elif response:
+                st.error(
+                    get_json(response).get(
+                        "detail",
+                        "Unable to mark all notifications as read."
+                    )
+                )
+
+    notification_icons = {
+        "success": "🎉",
+        "booking": "🎫",
+        "payment": "💳",
+        "refund": "💰",
+        "cancel": "❌",
+        "cancellation": "❌",
+        "wallet": "💰",
+        "warning": "⚠️",
+        "info": "ℹ️",
+    }
+
+    service_icons = {
+        "Bus": "🚌",
+        "Train": "🚆",
+        "Flight": "✈️",
+        "Hotel": "🏨",
+        "Cab": "🚕",
+        "Food": "🍔",
+        "Movies": "🎬",
+        "Movie": "🎬",
+        "Events": "🎟️",
+        "Event": "🎟️",
+        "Wallet": "💰",
+        "TRAVELX": "✈️",
+    }
+
+    if not notifications:
+        st.html("""
+        <div style="
+            padding:50px 25px;
+            text-align:center;
+            border:1px solid rgba(148,163,184,.18);
+            border-radius:20px;
+            background:rgba(15,23,42,.45);
+        ">
+            <div style="font-size:55px;">🔔</div>
+            <div style="font-size:24px;font-weight:900;margin-top:10px;">
+                No Notifications Yet
+            </div>
+            <div style="opacity:.65;margin-top:8px;">
+                Booking confirmations, refunds and important
+                TRAVELX updates will appear here.
+            </div>
+        </div>
+        """)
+
+    else:
+        for notification in notifications:
+            notification_id = notification.get("id", "-")
+            notification_type = str(
+                notification.get("notification_type", "info")
+            ).lower()
+            title = notification.get(
+                "title", "TRAVELX Notification"
+            )
+            message = notification.get("message", "")
+            service = notification.get("service")
+            booking_id = notification.get("booking_id")
+            amount = notification.get("amount")
+            is_read = bool(notification.get("is_read", False))
+            created_at = notification.get("created_at", "")
+
+            icon = notification_icons.get(notification_type, "🔔")
+            service_icon = service_icons.get(str(service), "🔔")
+
+            # Format timestamp without changing the backend value.
+            formatted_time = str(created_at).replace("T", " ")
+            if "." in formatted_time:
+                formatted_time = formatted_time.split(".")[0]
+            if "+" in formatted_time:
+                formatted_time = formatted_time.split("+")[0]
+            formatted_time = formatted_time[:19]
+
+            # --------------------------------------------------------
+            # POLISHED NOTIFICATION CARD
+            # --------------------------------------------------------
+            if not is_read:
+                card_background = "rgba(30,64,175,.18)"
+                card_border = "rgba(96,165,250,.40)"
+                status_text = "🔵 Unread"
+            else:
+                card_background = "rgba(15,23,42,.35)"
+                card_border = "rgba(148,163,184,.16)"
+                status_text = "✓ Read"
+
+            with st.container(border=True):
+                st.markdown(
+                    f"""
+                    <div style="
+                        padding:4px 2px 8px 2px;
+                        border-radius:14px;
+                        background:{card_background};
+                        border:1px solid {card_border};
+                        padding:16px;
+                        margin-bottom:4px;
+                    ">
+                        <div style="
+                            display:flex;
+                            align-items:center;
+                            gap:10px;
+                            font-size:18px;
+                            font-weight:800;
+                            color:#f8fafc;
+                        ">
+                            <span style="font-size:26px;">{icon}</span>
+                            <span>{title}</span>
+                        </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+
+                left, right = st.columns([5, 1])
+
+                with left:
+                    st.write(message)
+
+                    meta_parts = []
+
+                    if service:
+                        meta_parts.append(
+                            f"{service_icon} {str(service)}"
+                        )
+
+                    if booking_id:
+                        meta_parts.append(
+                            f"🎫 Booking #{booking_id}"
+                        )
+
+                    if amount is not None:
+                        try:
+                            meta_parts.append(
+                                f"💰 ₹{float(amount):,.2f}"
+                            )
+                        except (TypeError, ValueError):
+                            pass
+
+                    if formatted_time:
+                        meta_parts.append(
+                            f"🕐 {formatted_time}"
+                        )
+
+                    if meta_parts:
+                        st.caption("  •  ".join(meta_parts))
+
+                    st.caption(status_text)
+
+                with right:
+                    if not is_read:
+                        if st.button(
+                            "✓ Read",
+                            use_container_width=True,
+                            key=f"read_notification_{notification_id}"
+                        ):
+                            response = api_patch(
+                                f"/notifications/{notification_id}/read"
+                            )
+
+                            if response and response.status_code == 200:
+                                st.rerun()
+                            elif response:
+                                st.error(
+                                    get_json(response).get(
+                                        "detail",
+                                        "Unable to mark notification as read."
+                                    )
+                                )
+
+    # ------------------------------------------------------------
+    # DEVELOPMENT TEST TOOL
+    # ------------------------------------------------------------
+    with st.expander("🧪 Notification System Test"):
+        st.caption(
+            "Development tool: create a test notification for the logged-in user."
+        )
+
+        test_type = st.selectbox(
+            "Notification Type",
+            [
+                "info",
+                "success",
+                "booking",
+                "payment",
+                "refund",
+                "cancel",
+                "warning"
+            ],
+            key="notification_test_type"
+        )
+
+        if st.button(
+            "➕ Create Test Notification",
+            use_container_width=True,
+            key="create_test_notification"
+        ):
+            response = api_post(
+                "/notifications/test",
+                {
+                    "notification_type": test_type,
+                    "title": "TRAVELX Notification Test",
+                    "message": (
+                        "Your TRAVELX notification center "
+                        "is working perfectly! 🚀"
+                    ),
+                    "service": "TRAVELX"
+                }
+            )
+
+            if response and response.status_code in [200, 201]:
+                st.success("Test notification created. 🎉")
+                st.rerun()
+            elif response:
+                st.error(
+                    get_json(response).get(
+                        "detail",
+                        "Unable to create test notification."
+                    )
+                )
+
 
 elif st.session_state.page == "My Bookings":
 
+    # ============================================================
+    # STEP 6 — MY BOOKINGS 2.0
+    # ============================================================
+
     st.title("📋 My Bookings")
-
     st.caption(
-        "All your TRAVELX reservations in one place."
+        "Your complete TRAVELX booking history — travel, stays, rides, food, "
+        "movies and events."
     )
 
-    st.divider()
+    # ------------------------------------------------------------
+    # SAFE SESSION STATE
+    # ------------------------------------------------------------
+    if "selected_booking" not in st.session_state:
+        st.session_state.selected_booking = None
 
+    if "cancel_target" not in st.session_state:
+        st.session_state.cancel_target = None
 
-    # ========================================================
-    # BUS BOOKINGS
-    # ========================================================
+    # ------------------------------------------------------------
+    # TOP ACTIONS
+    # ------------------------------------------------------------
+    action_left, action_right = st.columns([5, 1])
 
-    st.subheader(
-        "🚌 Bus Bookings"
-    )
-
-
-    bus_booking_response = api_get(
-        "/buses/my-bookings"
-    )
-
-
-    if (
-        bus_booking_response
-        and bus_booking_response.status_code == 200
-    ):
-
-        bus_bookings = get_json(
-            bus_booking_response
+    with action_left:
+        st.markdown(
+            """
+            <div style="
+                padding:14px 18px;
+                border:1px solid rgba(96,165,250,.18);
+                border-radius:16px;
+                background:rgba(15,23,42,.55);
+                color:#94a3b8;
+                font-size:13px;
+            ">
+                🎯 <b style="color:#e2e8f0;">Everything in one place.</b>
+                Track booking status, payment method, amount and cancellation
+                details from one unified dashboard.
+            </div>
+            """,
+            unsafe_allow_html=True
         )
 
+    with action_right:
+        if st.button(
+            "🔄 Refresh",
+            use_container_width=True,
+            key="refresh_unified_bookings_step6"
+        ):
+            st.session_state.selected_booking = None
+            st.session_state.cancel_target = None
+            st.rerun()
 
-        if not bus_bookings:
+    # ------------------------------------------------------------
+    # UNIFIED BOOKING COLLECTION
+    # ------------------------------------------------------------
+    unified_bookings = []
+    booking_errors = []
 
-            st.info(
-                "No bus bookings yet."
+    def add_booking(
+        response,
+        service,
+        icon,
+        title_builder,
+        subtitle_builder,
+        details_builder,
+        amount_key,
+        status_key,
+        payment_key,
+    ):
+        if response is None:
+            booking_errors.append(service)
+            return
+
+        if response.status_code != 200:
+            booking_errors.append(service)
+            return
+
+        data = get_json(response)
+
+        if not isinstance(data, list):
+            return
+
+        for item in data:
+            try:
+                amount = float(item.get(amount_key, 0) or 0)
+            except (TypeError, ValueError):
+                amount = 0.0
+
+            status = str(
+                item.get(status_key, "unknown") or "unknown"
+            ).strip().lower()
+
+            payment = str(
+                item.get(payment_key, "demo") or "demo"
+            ).strip().lower()
+
+            booking_id = item.get("id", "-")
+
+            try:
+                numeric_id = int(booking_id)
+            except (TypeError, ValueError):
+                numeric_id = 0
+
+            unified_bookings.append(
+                {
+                    "service": service,
+                    "icon": icon,
+                    "booking_id": booking_id,
+                    "numeric_id": numeric_id,
+                    "title": title_builder(item),
+                    "subtitle": subtitle_builder(item),
+                    "details": details_builder(item),
+                    "amount": amount,
+                    "payment": payment,
+                    "status": status,
+                    "raw": item,
+                }
             )
 
-        else:
-
-            for booking in bus_bookings:
-
-                with st.container(border=True):
-
-                    col1, col2, col3 = st.columns(
-                        [2, 2, 1]
-                    )
-
-
-                    with col1:
-
-                        st.markdown(
-                            f"### 🎫 Booking #{booking['id']}"
-                        )
-
-                        st.write(
-                            f"**Passenger:** "
-                            f"{booking['passenger_name']}"
-                        )
-
-                        st.caption(
-                            f"Phone: "
-                            f"{booking['passenger_phone']}"
-                        )
-
-
-                    with col2:
-
-                        st.write(
-                            f"🚌 Bus ID: "
-                            f"**{booking['bus_id']}**"
-                        )
-
-                        st.write(
-                            f"💺 Seats: "
-                            f"**{booking['seats']}**"
-                        )
-
-
-                    with col3:
-
-                        st.write(
-                            f"💰 **₹{booking['total_price']:,}**"
-                        )
-
-
-                        if booking.get(
-                            "booking_status"
-                        ) == "confirmed":
-
-                            st.success(
-                                "Confirmed"
-                            )
-
-                        else:
-
-                            st.warning(
-                                booking.get(
-                                    "booking_status",
-                                    "Unknown"
-                                )
-                            )
-
-
-    elif bus_booking_response:
-
-        st.error(
-            "Unable to load bus bookings."
-        )
-
-
-    st.divider()
-
-
-    # ========================================================
-    # TRAIN BOOKINGS
-    # ========================================================
-
-    st.subheader("🚆 Train Bookings")
-
-    train_booking_response = api_get(
-        "/trains/my-bookings"
+    # ------------------------------------------------------------
+    # BUS
+    # ------------------------------------------------------------
+    add_booking(
+        api_get("/buses/my-bookings"),
+        "Bus",
+        "🚌",
+        lambda x: f"Bus Booking #{x.get('id', '-')}",
+        lambda x: f"Bus ID: {x.get('bus_id', '-')}",
+        lambda x: [
+            ("💺 Seats", x.get("seats", "-")),
+            ("👤 Passenger", x.get("passenger_name", "-")),
+            ("📱 Phone", x.get("passenger_phone", "-")),
+        ],
+        "total_price",
+        "booking_status",
+        "payment_method",
     )
 
-    if (
-        train_booking_response
-        and train_booking_response.status_code == 200
-    ):
-        train_bookings = get_json(
-            train_booking_response
-        )
-
-        if not train_bookings:
-            st.info("No train bookings yet.")
-        else:
-            for booking in train_bookings:
-                with st.container(border=True):
-                    col1, col2, col3 = st.columns(
-                        [2, 2, 1]
-                    )
-
-                    with col1:
-                        st.markdown(
-                            f"### 🎫 Booking #{booking['id']}"
-                        )
-                        st.write(
-                            f"👤 Passenger: "
-                            f"**{booking['passenger_name']}**"
-                        )
-                        st.caption(
-                            f"📱 {booking['passenger_phone']}"
-                        )
-
-                    with col2:
-                        st.write(
-                            f"🚆 Train ID: "
-                            f"**{booking['train_id']}**"
-                        )
-                        st.write(
-                            f"🎟️ Class: "
-                            f"**{booking['travel_class'].upper()}**"
-                        )
-                        st.write(
-                            f"💺 Seats: "
-                            f"**{booking['seats']}**"
-                        )
-                        st.write(
-                            f"💳 Payment: "
-                            f"**{booking['payment_method'].upper()}**"
-                        )
-
-                    with col3:
-                        st.write(
-                            f"💰 **₹{booking['total_price']:,}**"
-                        )
-
-                        if (
-                            booking.get("booking_status")
-                            == "confirmed"
-                        ):
-                            st.success("Confirmed")
-                        else:
-                            st.warning(
-                                booking.get(
-                                    "booking_status",
-                                    "Unknown"
-                                )
-                            )
-
-    elif train_booking_response:
-        st.error("Unable to load train bookings.")
-
-    st.divider()
-
-    # ========================================================
-    # HOTEL BOOKINGS
-    # ========================================================
-
-    st.subheader("🏨 Hotel Bookings")
-
-    hotel_booking_response = api_get(
-        "/hotels/my-bookings"
+    # ------------------------------------------------------------
+    # TRAIN
+    # ------------------------------------------------------------
+    add_booking(
+        api_get("/trains/my-bookings"),
+        "Train",
+        "🚆",
+        lambda x: f"Train Booking #{x.get('id', '-')}",
+        lambda x: f"Train ID: {x.get('train_id', '-')}",
+        lambda x: [
+            ("🎟️ Class", str(x.get("travel_class", "-")).upper()),
+            ("💺 Seats", x.get("seats", "-")),
+            ("👤 Passenger", x.get("passenger_name", "-")),
+            ("📱 Phone", x.get("passenger_phone", "-")),
+        ],
+        "total_price",
+        "booking_status",
+        "payment_method",
     )
 
-    if (
-        hotel_booking_response
-        and hotel_booking_response.status_code == 200
-    ):
-
-        hotel_bookings = get_json(
-            hotel_booking_response
-        )
-
-        if not hotel_bookings:
-
-            st.info(
-                "No hotel bookings yet."
-            )
-
-        else:
-
-            for booking in hotel_bookings:
-
-                with st.container(border=True):
-
-                    col1, col2, col3 = st.columns(
-                        [2, 2, 1]
-                    )
-
-                    with col1:
-
-                        st.markdown(
-                            f"### 🏨 Booking #{booking['id']}"
-                        )
-
-                        st.write(
-                            f"**Guest:** "
-                            f"{booking['guest_name']}"
-                        )
-
-                        st.caption(
-                            f"Phone: {booking['guest_phone']}"
-                        )
-
-                    with col2:
-
-                        st.write(
-                            f"🏨 Hotel ID: "
-                            f"**{booking['hotel_id']}**"
-                        )
-
-                        st.write(
-                            f"🛏️ Rooms: "
-                            f"**{booking['rooms']}**"
-                        )
-
-                        st.write(
-                            f"🌙 Nights: "
-                            f"**{booking['nights']}**"
-                        )
-
-                        st.write(
-                            f"💳 Payment: "
-                            f"**{booking['payment_method'].upper()}**"
-                        )
-
-                    with col3:
-
-                        st.write(
-                            f"💰 **₹{booking['total_price']:,}**"
-                        )
-
-                        if (
-                            booking.get("booking_status")
-                            == "confirmed"
-                        ):
-
-                            st.success(
-                                "Confirmed"
-                            )
-
-                        else:
-
-                            st.warning(
-                                booking.get(
-                                    "booking_status",
-                                    "Unknown"
-                                )
-                            )
-
-    elif hotel_booking_response:
-
-        st.error(
-            "Unable to load hotel bookings."
-        )
-
-    st.divider()
-
-
-    # ========================================================
-    # CAB BOOKINGS
-    # ========================================================
-
-    st.subheader("🚕 Cab Bookings")
-
-    cab_booking_response = api_get(
-        "/cabs/my-bookings"
+    # ------------------------------------------------------------
+    # FLIGHT
+    # ------------------------------------------------------------
+    add_booking(
+        api_get("/flights/my-bookings"),
+        "Flight",
+        "✈️",
+        lambda x: f"Flight Booking #{x.get('id', '-')}",
+        lambda x: f"Flight ID: {x.get('flight_id', '-')}",
+        lambda x: [
+            ("💺 Class", str(x.get("travel_class", "-")).title()),
+            ("💺 Seats", x.get("seats", "-")),
+            ("👤 Passenger", x.get("passenger_name", "-")),
+            ("📱 Phone", x.get("passenger_phone", "-")),
+        ],
+        "total_price",
+        "booking_status",
+        "payment_method",
     )
 
-    if (
-        cab_booking_response
-        and cab_booking_response.status_code == 200
-    ):
-
-        cab_bookings = get_json(
-            cab_booking_response
-        )
-
-        if not cab_bookings:
-
-            st.info(
-                "No cab bookings yet."
-            )
-
-        else:
-
-            for booking in cab_bookings:
-
-                with st.container(border=True):
-
-                    col1, col2, col3 = st.columns(
-                        [2.5, 2.5, 1.5]
-                    )
-
-                    with col1:
-
-                        st.markdown(
-                            f"### 🚕 Booking #{booking['id']}"
-                        )
-
-                        st.write(
-                            f"👤 Passenger: "
-                            f"**{booking['passenger_name']}**"
-                        )
-
-                        st.caption(
-                            f"📱 {booking['passenger_phone']}"
-                        )
-
-                    with col2:
-
-                        st.write(
-                            f"🚕 Cab: "
-                            f"**{booking['cab_type']}**"
-                        )
-
-                        st.write(
-                            f"📍 {booking['pickup_location']} → "
-                            f"{booking['drop_location']}"
-                        )
-
-                        st.write(
-                            f"🛣️ Distance: "
-                            f"**{booking['distance_km']} km**"
-                        )
-
-                        st.write(
-                            f"💳 Payment: "
-                            f"**{booking['payment_method'].upper()}**"
-                        )
-
-                    with col3:
-
-                        st.write(
-                            f"💰 **₹{booking['total_price']:,}**"
-                        )
-
-                        if (
-                            booking.get("booking_status")
-                            == "confirmed"
-                        ):
-
-                            st.success(
-                                "Confirmed"
-                            )
-
-                        else:
-
-                            st.warning(
-                                booking.get(
-                                    "booking_status",
-                                    "Unknown"
-                                )
-                            )
-
-    elif cab_booking_response:
-
-        st.error(
-            "Unable to load cab bookings."
-        )
-
-    st.divider()
-
-    # ========================================================
-    # FOOD ORDERS
-    # ========================================================
-
-    st.subheader("🍔 Food Orders")
-
-    food_orders_response = api_get(
-        "/food/my-orders"
+    # ------------------------------------------------------------
+    # HOTEL
+    # ------------------------------------------------------------
+    add_booking(
+        api_get("/hotels/my-bookings"),
+        "Hotel",
+        "🏨",
+        lambda x: f"Hotel Booking #{x.get('id', '-')}",
+        lambda x: f"Hotel ID: {x.get('hotel_id', '-')}",
+        lambda x: [
+            ("🛏️ Rooms", x.get("rooms", "-")),
+            ("🌙 Nights", x.get("nights", "-")),
+            ("👤 Guest", x.get("guest_name", "-")),
+            ("📱 Phone", x.get("guest_phone", "-")),
+        ],
+        "total_price",
+        "booking_status",
+        "payment_method",
     )
 
-    if (
-        food_orders_response
-        and food_orders_response.status_code == 200
-    ):
-
-        food_orders = get_json(
-            food_orders_response
-        )
-
-        if not food_orders:
-            st.info("No food orders yet.")
-        else:
-            for order in food_orders:
-
-                with st.container(border=True):
-
-                    col1, col2, col3 = st.columns([2.5, 3, 1.5])
-
-                    with col1:
-                        st.markdown(
-                            f"### 🍔 Order #{order['id']}"
-                        )
-                        st.write(
-                            f"👤 Customer: **{order['customer_name']}**"
-                        )
-                        st.caption(
-                            f"📱 {order['customer_phone']}"
-                        )
-
-                    with col2:
-                        st.write(
-                            f"🏪 Restaurant ID: **{order['restaurant_id']}**"
-                        )
-                        st.write(
-                            f"📍 {order['delivery_address']}"
-                        )
-
-                        if order.get("items"):
-                            item_text = ", ".join(
-                                f"{item['item_name']} × {item['quantity']}"
-                                for item in order["items"]
-                            )
-                            st.caption(
-                                f"🍽️ {item_text}"
-                            )
-
-                        st.write(
-                            f"💳 Payment: **{order['payment_method'].upper()}**"
-                        )
-
-                    with col3:
-                        st.write(
-                            f"💰 **₹{order['total_price']:,}**"
-                        )
-
-                        if order.get("order_status") == "confirmed":
-                            st.success("Confirmed")
-                        else:
-                            st.warning(
-                                order.get(
-                                    "order_status",
-                                    "Unknown"
-                                )
-                            )
-
-    elif food_orders_response:
-        st.error("Unable to load food orders.")
-
-
-    st.divider()
-    
-    # ========================================================
-    # MOVIE BOOKINGS
-    # ========================================================
-
-    st.subheader("🎬 Movie Bookings")
-
-    movie_booking_response = api_get(
-        "/movies/my-bookings"
+    # ------------------------------------------------------------
+    # CAB
+    # ------------------------------------------------------------
+    add_booking(
+        api_get("/cabs/my-bookings"),
+        "Cab",
+        "🚕",
+        lambda x: f"{x.get('cab_type', 'Cab')} Booking #{x.get('id', '-')}",
+        lambda x: (
+            f"{x.get('pickup_location', '-')} → "
+            f"{x.get('drop_location', '-')}"
+        ),
+        lambda x: [
+            ("🛣️ Distance", f"{x.get('distance_km', '-')} km"),
+            ("👤 Passenger", x.get("passenger_name", "-")),
+            ("📱 Phone", x.get("passenger_phone", "-")),
+        ],
+        "total_price",
+        "booking_status",
+        "payment_method",
     )
 
-    if (
-        movie_booking_response
-        and movie_booking_response.status_code == 200
-    ):
-        movie_bookings = get_json(
-            movie_booking_response
-        )
-
-        if not movie_bookings:
-            st.info(
-                "No movie bookings yet. Book your first movie ticket from the Movies section. 🎬"
-            )
-
-        else:
-            for booking in movie_bookings:
-
-                movie_id = booking.get("movie_id")
-                cinema_id = booking.get("cinema_id")
-                show_id = booking.get("show_id")
-
-                cache = st.session_state.movie_booking_lookup_cache
-
-                movie_cache_key = f"movie_{movie_id}"
-                cinema_cache_key = f"cinema_{cinema_id}"
-                show_cache_key = f"show_{show_id}"
-
-                # ------------------------------------------------
-                # LOAD MOVIE DETAILS
-                # ------------------------------------------------
-
-                if movie_cache_key not in cache:
-                    movie_response = api_get(
-                        f"/movies/{movie_id}"
-                    )
-
-                    cache[movie_cache_key] = (
-                        get_json(movie_response)
-                        if movie_response
-                        and movie_response.status_code == 200
-                        else {}
-                    )
-
-                # ------------------------------------------------
-                # LOAD CINEMA DETAILS
-                # ------------------------------------------------
-
-                if cinema_cache_key not in cache:
-                    cinema_response = api_get(
-                        f"/movies/cinemas/{cinema_id}"
-                    )
-
-                    cache[cinema_cache_key] = (
-                        get_json(cinema_response)
-                        if cinema_response
-                        and cinema_response.status_code == 200
-                        else {}
-                    )
-
-                # ------------------------------------------------
-                # LOAD SHOW DETAILS
-                # ------------------------------------------------
-
-                if show_cache_key not in cache:
-                    show_response = api_get(
-                        f"/movies/shows/{show_id}"
-                    )
-
-                    cache[show_cache_key] = (
-                        get_json(show_response)
-                        if show_response
-                        and show_response.status_code == 200
-                        else {}
-                    )
-
-                movie_info = cache.get(
-                    movie_cache_key,
-                    {}
-                )
-
-                cinema_info = cache.get(
-                    cinema_cache_key,
-                    {}
-                )
-
-                show_info = cache.get(
-                    show_cache_key,
-                    {}
-                )
-
-                movie_title = movie_info.get(
-                    "title",
-                    f"Movie ID {movie_id}"
-                )
-
-                movie_language = movie_info.get(
-                    "language",
-                    ""
-                )
-
-                movie_genre = movie_info.get(
-                    "genre",
-                    ""
-                )
-
-                cinema_name = cinema_info.get(
-                    "name",
-                    f"Cinema ID {cinema_id}"
-                )
-
-                cinema_address = cinema_info.get(
-                    "address",
-                    ""
-                )
-
-                screen_name = show_info.get(
-                    "screen_name",
-                    "Screen"
-                )
-
-                ticket_price = show_info.get(
-                    "ticket_price",
-                    0
-                )
-
-                booking_status = booking.get(
-                    "booking_status",
-                    "unknown"
-                )
-
-                # ------------------------------------------------
-                # MOVIE TICKET CARD
-                # ------------------------------------------------
-
-                with st.container(border=True):
-
-                    st.markdown(
-                        f"### 🎬 {movie_title}"
-                    )
-
-                    st.caption(
-                        f"🎫 Booking #{booking['id']} • "
-                        f"{movie_genre} • {movie_language}"
-                    )
-
-                    col1, col2, col3 = st.columns(
-                        [2.5, 3, 1.5]
-                    )
-
-                    with col1:
-
-                        st.write(
-                            f"👤 Customer: "
-                            f"**{booking['customer_name']}**"
-                        )
-
-                        st.caption(
-                            f"📱 {booking['customer_phone']}"
-                        )
-
-                        st.write(
-                            f"🏢 Cinema: **{cinema_name}**"
-                        )
-
-                        if cinema_address:
-                            st.caption(
-                                f"📍 {cinema_address}"
-                            )
-
-                    with col2:
-
-                        st.write(
-                            f"📅 Date: "
-                            f"**{booking['show_date']}**"
-                        )
-
-                        st.write(
-                            f"🕐 Show Time: "
-                            f"**{booking['show_time']}**"
-                        )
-
-                        st.write(
-                            f"🎥 Screen: "
-                            f"**{screen_name}**"
-                        )
-
-                        st.write(
-                            f"💺 Seats: "
-                            f"**{booking['seats']}**"
-                        )
-
-                        st.write(
-                            f"🎟️ Tickets: "
-                            f"**{booking['number_of_seats']}**"
-                        )
-
-                    with col3:
-
-                        st.write(
-                            f"🎟️ Ticket Price: "
-                            f"**₹{int(ticket_price):,}**"
-                            if ticket_price
-                            else "🎟️ Ticket Price: **—**"
-                        )
-
-                        st.write(
-                            f"💰 Total Paid: "
-                            f"**₹{booking['total_price']:,}**"
-                        )
-
-                        st.write(
-                            f"💳 Payment: "
-                            f"**{booking['payment_method'].upper()}**"
-                        )
-
-                        if booking_status == "confirmed":
-
-                            st.success(
-                                "Confirmed"
-                            )
-
-                        else:
-
-                            st.warning(
-                                booking_status.title()
-                            )
-
-                    # ------------------------------------------------
-                    # DIGITAL TICKET SUMMARY
-                    # ------------------------------------------------
-
-                    with st.expander(
-                        "🎟️ View Ticket Details"
-                    ):
-
-                        ticket_col1, ticket_col2 = st.columns(2)
-
-                        with ticket_col1:
-
-                            st.write(
-                                f"**Booking ID:** #{booking['id']}"
-                            )
-
-                            st.write(
-                                f"**Movie:** {movie_title}"
-                            )
-
-                            st.write(
-                                f"**Cinema:** {cinema_name}"
-                            )
-
-                            st.write(
-                                f"**Screen:** {screen_name}"
-                            )
-
-                        with ticket_col2:
-
-                            st.write(
-                                f"**Date:** {booking['show_date']}"
-                            )
-
-                            st.write(
-                                f"**Time:** {booking['show_time']}"
-                            )
-
-                            st.write(
-                                f"**Seats:** {booking['seats']}"
-                            )
-
-                            st.write(
-                                f"**Total:** ₹{booking['total_price']:,}"
-                            )
-
-                        st.info(
-                            "🎉 Please show this booking information at the cinema."
-                        )
-
-    elif movie_booking_response:
-
-        st.error(
-            "Unable to load movie bookings."
-        )
-
-    st.divider()
-
-    # OTHER BOOKINGS
-    # ========================================================
-
-    st.subheader(
-        "🎟️ Other Bookings"
+    # ------------------------------------------------------------
+    # FOOD
+    # ------------------------------------------------------------
+    add_booking(
+        api_get("/food/my-orders"),
+        "Food",
+        "🍔",
+        lambda x: f"Food Order #{x.get('id', '-')}",
+        lambda x: f"Restaurant ID: {x.get('restaurant_id', '-')}",
+        lambda x: [
+            ("👤 Customer", x.get("customer_name", "-")),
+            ("📍 Address", x.get("delivery_address", "-")),
+        ],
+        "total_price",
+        "order_status",
+        "payment_method",
     )
 
-
-    booking_response = api_get(
-        "/bookings/my"
+    # ------------------------------------------------------------
+    # MOVIES
+    # ------------------------------------------------------------
+    add_booking(
+        api_get("/movies/my-bookings"),
+        "Movie",
+        "🎬",
+        lambda x: f"Movie Booking #{x.get('id', '-')}",
+        lambda x: f"Cinema ID: {x.get('cinema_id', '-')}",
+        lambda x: [
+            (
+                "🎟️ Tickets",
+                x.get(
+                    "number_of_tickets",
+                    x.get("number_of_seats", "-")
+                ),
+            ),
+            ("💺 Seats", x.get("seats", "-")),
+            ("📅 Date", x.get("show_date", "-")),
+            ("🕐 Time", x.get("show_time", "-")),
+        ],
+        "total_price",
+        "booking_status",
+        "payment_method",
     )
 
-
-    if (
-        booking_response
-        and booking_response.status_code == 200
-    ):
-
-        bookings = get_json(
-            booking_response
-        )
-
-
-        if not bookings:
-
-            st.info(
-                "No other bookings yet."
-            )
-
-        else:
-
-            for booking in bookings:
-
-                with st.container(border=True):
-
-                    col1, col2, col3 = st.columns(
-                        [2, 3, 1]
-                    )
-
-
-                    with col1:
-
-                        st.markdown(
-                            f"### 🎫 #{booking['id']}"
-                        )
-
-                        st.write(
-                            booking[
-                                "booking_type"
-                            ].upper()
-                        )
-
-
-                    with col2:
-
-                        st.write(
-                            f"**{booking['title']}**"
-                        )
-
-
-                        if booking.get("source"):
-
-                            st.write(
-                                f"📍 "
-                                f"{booking['source']} → "
-                                f"{booking.get('destination', '')}"
-                            )
-
-
-                        if booking.get(
-                            "booking_date"
-                        ):
-
-                            st.write(
-                                f"📅 "
-                                f"{booking['booking_date']}"
-                            )
-
-
-                        if booking.get(
-                            "details"
-                        ):
-
-                            st.caption(
-                                booking["details"]
-                            )
-
-
-                    with col3:
-
-                        st.write(
-                            f"**₹"
-                            f"{float(booking.get('amount', 0)):,.2f}**"
-                        )
-
-
-                        if booking.get(
-                            "status"
-                        ) == "confirmed":
-
-                            st.success(
-                                "Confirmed"
-                            )
-
-                        else:
-
-                            st.warning(
-                                booking.get(
-                                    "status",
-                                    "Unknown"
-                                )
-                            )
-
-
-    elif booking_response:
-
-        st.error(
-            "Unable to load bookings."
-        )
-
-
-
-    # ========================================================
-    # FLIGHT BOOKINGS
-    # ========================================================
-
-    flight_response = api_get(
-        "/flights/my-bookings"
+    # ------------------------------------------------------------
+    # EVENTS
+    # ------------------------------------------------------------
+    add_booking(
+        api_get("/events/my-bookings"),
+        "Event",
+        "🎟️",
+        lambda x: f"Event Booking #{x.get('id', '-')}",
+        lambda x: f"Show ID: {x.get('show_id', '-')}",
+        lambda x: [
+            ("🎫 Ticket Type", x.get("ticket_type", "-")),
+            ("👥 Tickets", x.get("number_of_tickets", "-")),
+            (
+                "📱 Phone",
+                x.get(
+                    "customer_phone",
+                    x.get("passenger_phone", "-")
+                ),
+            ),
+        ],
+        "total_price",
+        "booking_status",
+        "payment_method",
     )
 
-    if (
-        flight_response
-        and flight_response.status_code == 200
-    ):
+    # ------------------------------------------------------------
+    # GENERIC BOOKINGS
+    # ------------------------------------------------------------
+    generic_response = api_get("/bookings/my")
 
-        flight_bookings = get_json(
-            flight_response
-        )
+    if generic_response and generic_response.status_code == 200:
+        generic_data = get_json(generic_response)
 
-        st.subheader("✈️ Flight Bookings")
+        if isinstance(generic_data, list):
+            for item in generic_data:
+                try:
+                    amount = float(item.get("amount", 0) or 0)
+                except (TypeError, ValueError):
+                    amount = 0.0
 
-        if not flight_bookings:
+                booking_id = item.get("id", "-")
 
-            st.info("No flight bookings yet.")
+                try:
+                    numeric_id = int(booking_id)
+                except (TypeError, ValueError):
+                    numeric_id = 0
 
-        else:
-
-            for booking in flight_bookings:
-
-                with st.container(border=True):
-
-                    col1, col2, col3 = st.columns(
-                        [2.5, 2.5, 1.5]
-                    )
-
-                    with col1:
-
-                        st.markdown(
-                            f"### ✈️ Booking #{booking['id']}"
-                        )
-
-                        st.write(
-                            f"👤 Passenger: "
-                            f"**{booking['passenger_name']}**"
-                        )
-
-                        st.caption(
-                            f"📱 {booking['passenger_phone']}"
-                        )
-
-                    with col2:
-
-                        st.write(
-                            f"🎫 Flight ID: "
-                            f"**{booking['flight_id']}**"
-                        )
-
-                        st.write(
-                            f"💺 Class: "
-                            f"**{booking['travel_class'].title()}**"
-                        )
-
-                        st.write(
-                            f"💺 Seats: "
-                            f"**{booking['seats']}**"
-                        )
-
-                        st.write(
-                            f"💳 Payment: "
-                            f"**{booking['payment_method'].upper()}**"
-                        )
-
-                    with col3:
-
-                        st.write(
-                            f"💰 **₹{booking['total_price']:,}**"
-                        )
-
-                        if booking.get("booking_status") == "confirmed":
-
-                            st.success("Confirmed")
-
-                        else:
-
-                            st.warning(
-                                booking.get(
-                                    "booking_status",
-                                    "Unknown"
-                                )
-                            )
-
-
-
-    # ========================================================
-    # EVENT BOOKINGS
-    # ========================================================
-
-    st.divider()
-
-    st.subheader("🎟️ Event Bookings")
-
-    event_booking_response = api_get(
-        "/events/my-bookings"
-    )
-
-    if (
-        event_booking_response
-        and event_booking_response.status_code == 200
-    ):
-
-        event_bookings = get_json(
-            event_booking_response
-        )
-
-        if not event_bookings:
-
-            st.info(
-                "No event bookings yet. "
-                "Discover an event and book your tickets! 🎟️"
-            )
-
-        else:
-
-            for booking in event_bookings:
-
-                event_id = booking.get("event_id")
-                venue_id = booking.get("venue_id")
-
-                event_info = {}
-                venue_info = {}
-
-                event_response = api_get(
-                    f"/events/{event_id}"
-                )
-
-                if (
-                    event_response
-                    and event_response.status_code == 200
-                ):
-
-                    event_info = get_json(
-                        event_response
-                    )
-
-                venue_response = api_get(
-                    "/events/venues/all"
-                )
-
-                if (
-                    venue_response
-                    and venue_response.status_code == 200
-                ):
-
-                    venue_info = next(
-                        (
-                            venue
-                            for venue in get_json(venue_response)
-                            if venue.get("id") == venue_id
+                unified_bookings.append(
+                    {
+                        "service": str(
+                            item.get("booking_type", "Other")
+                        ).title(),
+                        "icon": "🎫",
+                        "booking_id": booking_id,
+                        "numeric_id": numeric_id,
+                        "title": item.get(
+                            "title",
+                            "TRAVELX Booking"
                         ),
-                        {}
-                    )
+                        "subtitle": (
+                            f"{item.get('source', '')} → "
+                            f"{item.get('destination', '')}"
+                        ).strip(" →"),
+                        "details": [
+                            (
+                                "📅 Date",
+                                item.get("booking_date", "-")
+                            ),
+                            (
+                                "📝 Details",
+                                item.get("details", "-")
+                            ),
+                        ],
+                        "amount": amount,
+                        "payment": str(
+                            item.get(
+                                "payment_method",
+                                "demo"
+                            ) or "demo"
+                        ).strip().lower(),
+                        "status": str(
+                            item.get(
+                                "status",
+                                "unknown"
+                            ) or "unknown"
+                        ).strip().lower(),
+                        "raw": item,
+                    }
+                )
+    elif generic_response:
+        booking_errors.append("Other")
 
-                event_name = event_info.get(
-                    "name",
-                    f"Event ID {event_id}"
+    # ------------------------------------------------------------
+    # SORT LATEST FIRST
+    # ------------------------------------------------------------
+    unified_bookings.sort(
+        key=lambda x: x.get("numeric_id", 0),
+        reverse=True
+    )
+
+    # ------------------------------------------------------------
+    # SEARCH + FILTERS
+    # ------------------------------------------------------------
+    st.divider()
+
+    st.subheader("🔎 Find a Booking")
+
+    search_col, service_col, status_col, payment_col = st.columns(
+        [3.2, 1.6, 1.6, 1.6]
+    )
+
+    with search_col:
+        booking_search = st.text_input(
+            "Search",
+            placeholder=(
+                "Booking ID, passenger, location, service..."
+            ),
+            key="step6_booking_search",
+        )
+
+    all_services = [
+        "All",
+        "Bus",
+        "Train",
+        "Flight",
+        "Hotel",
+        "Cab",
+        "Food",
+        "Movie",
+        "Event",
+        "Other",
+    ]
+
+    with service_col:
+        selected_service = st.selectbox(
+            "Service",
+            all_services,
+            key="step6_booking_service_filter",
+        )
+
+    with status_col:
+        selected_status = st.selectbox(
+            "Status",
+            ["All", "Confirmed", "Pending", "Cancelled"],
+            key="step6_booking_status_filter",
+        )
+
+    with payment_col:
+        selected_payment_filter = st.selectbox(
+            "Payment",
+            ["All", "Wallet", "Demo"],
+            key="step6_booking_payment_filter",
+        )
+
+    filtered_bookings = list(unified_bookings)
+
+    search_term = booking_search.strip().lower()
+
+    if search_term:
+        def matches_search(booking):
+            searchable_parts = [
+                booking.get("service", ""),
+                booking.get("title", ""),
+                booking.get("subtitle", ""),
+                str(booking.get("booking_id", "")),
+                booking.get("payment", ""),
+                booking.get("status", ""),
+            ]
+
+            for label, value in booking.get("details", []):
+                searchable_parts.append(str(label))
+                searchable_parts.append(str(value))
+
+            searchable_text = " ".join(
+                str(part).lower()
+                for part in searchable_parts
+            )
+
+            return search_term in searchable_text
+
+        filtered_bookings = [
+            booking
+            for booking in filtered_bookings
+            if matches_search(booking)
+        ]
+
+    if selected_service != "All":
+        filtered_bookings = [
+            booking
+            for booking in filtered_bookings
+            if booking["service"] == selected_service
+        ]
+
+    if selected_status != "All":
+        wanted_status = selected_status.lower()
+
+        filtered_bookings = [
+            booking
+            for booking in filtered_bookings
+            if (
+                booking["status"] == wanted_status
+                or (
+                    wanted_status == "cancelled"
+                    and booking["status"] == "canceled"
+                )
+            )
+        ]
+
+    if selected_payment_filter != "All":
+        wanted_payment = selected_payment_filter.lower()
+
+        filtered_bookings = [
+            booking
+            for booking in filtered_bookings
+            if booking["payment"] == wanted_payment
+        ]
+
+    # ------------------------------------------------------------
+    # SUMMARY METRICS
+    # ------------------------------------------------------------
+    total_count = len(filtered_bookings)
+
+    confirmed_count = sum(
+        1
+        for booking in filtered_bookings
+        if booking["status"] == "confirmed"
+    )
+
+    pending_count = sum(
+        1
+        for booking in filtered_bookings
+        if booking["status"] == "pending"
+    )
+
+    cancelled_count = sum(
+        1
+        for booking in filtered_bookings
+        if booking["status"] in ("cancelled", "canceled")
+    )
+
+    confirmed_spend = sum(
+        booking["amount"]
+        for booking in filtered_bookings
+        if booking["status"] != "cancelled"
+        and booking["status"] != "canceled"
+    )
+
+    total_value = sum(
+        booking["amount"]
+        for booking in filtered_bookings
+    )
+
+    services_used = len(
+        set(
+            booking["service"]
+            for booking in filtered_bookings
+        )
+    )
+
+    st.subheader("📊 Booking Overview")
+
+    m1, m2, m3, m4 = st.columns(4)
+
+    with m1:
+        st.html(
+            f"""
+            <div class="metric-card">
+                <div class="metric-label">Bookings</div>
+                <div class="metric-value">{total_count}</div>
+            </div>
+            """
+        )
+
+    with m2:
+        st.html(
+            f"""
+            <div class="metric-card">
+                <div class="metric-label">Confirmed Spend</div>
+                <div class="metric-value">₹{confirmed_spend:,.0f}</div>
+            </div>
+            """
+        )
+
+    with m3:
+        st.html(
+            f"""
+            <div class="metric-card">
+                <div class="metric-label">Active</div>
+                <div class="metric-value">{confirmed_count + pending_count}</div>
+            </div>
+            """
+        )
+
+    with m4:
+        st.html(
+            f"""
+            <div class="metric-card">
+                <div class="metric-label">Services Used</div>
+                <div class="metric-value">{services_used}</div>
+            </div>
+            """
+        )
+
+    # ------------------------------------------------------------
+    # STATUS SUMMARY
+    # ------------------------------------------------------------
+    status_summary = st.columns(3)
+
+    with status_summary[0]:
+        st.success(
+            f"✅ Confirmed: {confirmed_count}"
+        )
+
+    with status_summary[1]:
+        st.warning(
+            f"⏳ Pending: {pending_count}"
+        )
+
+    with status_summary[2]:
+        st.error(
+            f"❌ Cancelled: {cancelled_count}"
+        )
+
+    if total_value > 0 and cancelled_count > 0:
+        st.caption(
+            f"Booking value in current view: ₹{total_value:,.0f}"
+        )
+
+    # ------------------------------------------------------------
+    # SERVICE BREAKDOWN
+    # ------------------------------------------------------------
+    if filtered_bookings:
+        service_counts = {}
+
+        service_icons = {
+            "Bus": "🚌",
+            "Train": "🚆",
+            "Flight": "✈️",
+            "Hotel": "🏨",
+            "Cab": "🚕",
+            "Food": "🍔",
+            "Movie": "🎬",
+            "Event": "🎟️",
+            "Other": "🎫",
+        }
+
+        for booking in filtered_bookings:
+            service = booking["service"]
+            service_counts[service] = (
+                service_counts.get(service, 0) + 1
+            )
+
+        st.divider()
+        st.subheader("🧩 Services in This View")
+
+        breakdown_columns = st.columns(
+            min(4, max(1, len(service_counts)))
+        )
+
+        for index, (service, count) in enumerate(
+            service_counts.items()
+        ):
+            with breakdown_columns[
+                index % len(breakdown_columns)
+            ]:
+                st.html(
+                    f"""
+                    <div class="metric-card">
+                        <div style="font-size:30px;">
+                            {service_icons.get(service, "🎫")}
+                        </div>
+                        <div class="metric-label">
+                            {service}
+                        </div>
+                        <div class="metric-value">
+                            {count}
+                        </div>
+                    </div>
+                    """
                 )
 
-                venue_name = venue_info.get(
-                    "name",
-                    f"Venue ID {venue_id}"
+    # ------------------------------------------------------------
+    # CANCELLATION HELPER
+    # ------------------------------------------------------------
+    def cancel_booking(service, booking_id):
+
+        endpoint_map = {
+            "Bus": f"/buses/bookings/{booking_id}/cancel",
+            "Train": f"/trains/bookings/{booking_id}/cancel",
+            "Flight": f"/flights/bookings/{booking_id}/cancel",
+            "Hotel": f"/hotels/bookings/{booking_id}/cancel",
+            "Cab": f"/cabs/bookings/{booking_id}/cancel",
+            "Food": f"/food/orders/{booking_id}/cancel",
+            "Movie": f"/movies/bookings/{booking_id}/cancel",
+            "Event": f"/events/bookings/{booking_id}/cancel",
+        }
+
+        endpoint = endpoint_map.get(service)
+
+        if not endpoint:
+            st.error(
+                f"Cancellation is not available for "
+                f"{service} bookings."
+            )
+            return False
+
+        response = api_post(endpoint, {})
+
+        if response is None:
+            return False
+
+        if response.status_code in [200, 201]:
+            st.success(
+                f"✅ {service} booking #{booking_id} "
+                f"cancelled successfully."
+            )
+            return True
+
+        st.error(
+            get_json(response).get(
+                "detail",
+                "Unable to cancel booking."
+            )
+        )
+        return False
+
+    # ------------------------------------------------------------
+    # BOOKING HISTORY
+    # ------------------------------------------------------------
+    st.divider()
+    st.subheader("📜 Booking History")
+
+    if booking_errors:
+        st.warning(
+            "Some booking services could not be loaded: "
+            + ", ".join(sorted(set(booking_errors)))
+        )
+
+    if not filtered_bookings:
+
+        if unified_bookings:
+            st.info(
+                "🔍 No bookings match your current search or filters."
+            )
+        else:
+            st.html(
+                """
+                <div style="
+                    padding:55px 25px;
+                    text-align:center;
+                    border:1px solid rgba(148,163,184,.18);
+                    border-radius:22px;
+                    background:rgba(15,23,42,.45);
+                ">
+                    <div style="font-size:58px;">🎫</div>
+                    <div style="
+                        font-size:25px;
+                        font-weight:900;
+                        margin-top:10px;
+                    ">
+                        No Bookings Yet
+                    </div>
+                    <div style="
+                        opacity:.65;
+                        margin-top:8px;
+                    ">
+                        Your buses, trains, flights, hotels, cabs,
+                        food, movies and event bookings will appear here.
+                    </div>
+                </div>
+                """
+            )
+
+    else:
+
+        for booking in filtered_bookings:
+
+            status = booking["status"]
+            service = booking["service"]
+            amount = booking["amount"]
+            payment = booking["payment"]
+
+            is_cancelled = status in (
+                "cancelled",
+                "canceled",
+            )
+
+            is_confirmed = status == "confirmed"
+            is_pending = status == "pending"
+
+            if is_confirmed:
+                status_label = "✅ Confirmed"
+            elif is_pending:
+                status_label = "⏳ Pending"
+            elif is_cancelled:
+                status_label = "❌ Cancelled"
+            else:
+                status_label = f"ℹ️ {status.title()}"
+
+            with st.container(border=True):
+
+                top_left, top_mid, top_right = st.columns(
+                    [4.8, 1.5, 1.5]
                 )
 
-                venue_address = venue_info.get(
-                    "address",
-                    ""
-                )
-
-                with st.container(border=True):
-
+                with top_left:
                     st.markdown(
-                        f"### 🎟️ {event_name}"
+                        f"### {booking['icon']} {booking['title']}"
                     )
 
                     st.caption(
-                        f"🎫 Booking #{booking['id']}"
+                        f"{service}  •  "
+                        f"Booking #{booking['booking_id']}"
                     )
 
-                    col1, col2, col3 = st.columns(
-                        [2.5, 3, 1.5]
+                    st.write(
+                        f"📍 {booking['subtitle']}"
                     )
 
-                    with col1:
+                with top_mid:
+                    if is_confirmed:
+                        st.success(status_label)
+                    elif is_cancelled:
+                        st.error(status_label)
+                    elif is_pending:
+                        st.warning(status_label)
+                    else:
+                        st.info(status_label)
 
-                        st.write(
-                            f"👤 Customer: "
-                            f"**{booking['customer_name']}**"
-                        )
+                with top_right:
+                    st.markdown(
+                        f"""
+                        <div style="
+                            text-align:right;
+                            padding-top:5px;
+                        ">
+                            <div style="
+                                font-size:11px;
+                                opacity:.60;
+                                font-weight:800;
+                                letter-spacing:.8px;
+                            ">
+                                TOTAL
+                            </div>
+                            <div style="
+                                font-size:27px;
+                                font-weight:900;
+                            ">
+                                ₹{amount:,.0f}
+                            </div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True
+                    )
 
-                        st.caption(
-                            f"📱 {booking['customer_phone']}"
-                        )
+                st.divider()
 
-                        st.write(
-                            f"🏟️ Venue: "
-                            f"**{venue_name}**"
-                        )
+                details = booking.get("details", [])
 
-                        if venue_address:
+                if details:
+                    detail_count = min(
+                        4,
+                        len(details)
+                    )
 
-                            st.caption(
-                                f"📍 {venue_address}"
+                    detail_columns = st.columns(
+                        detail_count
+                    )
+
+                    for index, (label, value) in enumerate(
+                        details[:4]
+                    ):
+                        with detail_columns[
+                            index % detail_count
+                        ]:
+                            st.caption(label)
+                            st.markdown(
+                                f"**{str(value)}**"
                             )
 
-                    with col2:
+                st.divider()
 
-                        st.write(
-                            f"📅 Date: "
-                            f"**{booking['show_date']}**"
-                        )
+                payment_left, payment_mid, action_area = st.columns(
+                    [2.4, 3.2, 2]
+                )
 
-                        st.write(
-                            f"🕐 Time: "
-                            f"**{booking['show_time']}**"
-                        )
+                with payment_left:
 
-                        st.write(
-                            f"🎫 Ticket Type: "
-                            f"**{booking['ticket_type']}**"
-                        )
+                    payment_icon = (
+                        "💰"
+                        if payment == "wallet"
+                        else "🧪"
+                    )
 
-                        st.write(
-                            f"👥 Tickets: "
-                            f"**{booking['number_of_tickets']}**"
-                        )
+                    payment_label = (
+                        "TRAVELX Wallet"
+                        if payment == "wallet"
+                        else "Demo Payment"
+                    )
 
-                        st.write(
-                            f"💳 Payment: "
-                            f"**{booking['payment_method'].upper()}**"
-                        )
+                    st.caption(
+                        f"{payment_icon} Payment Method"
+                    )
 
-                    with col3:
+                    st.write(payment_label)
 
-                        st.write(
-                            f"💰 **₹{booking['total_price']:,}**"
-                        )
+                with payment_mid:
 
-                        if (
-                            booking.get("booking_status")
-                            == "confirmed"
-                        ):
+                    if is_cancelled:
 
+                        if payment == "wallet":
                             st.success(
-                                "Confirmed"
+                                f"💰 ₹{amount:,.0f} "
+                                "refunded to TRAVELX Wallet"
                             )
-
                         else:
-
-                            st.warning(
-                                booking.get(
-                                    "booking_status",
-                                    "Unknown"
-                                )
+                            st.info(
+                                "🧪 Demo payment — "
+                                "no wallet refund was required."
                             )
 
-    elif event_booking_response:
+                    elif is_confirmed:
+                        st.caption("🛡️ Booking Protection")
+                        st.write(
+                            "Cancellation available"
+                        )
 
-        st.error(
-            "Unable to load event bookings."
+                    elif is_pending:
+                        st.caption("⏳ Booking Status")
+                        st.write(
+                            "Waiting for confirmation"
+                        )
+
+                    else:
+                        st.caption("TRAVELX")
+                        st.write(
+                            status.title()
+                        )
+
+                with action_area:
+
+                    view_key = (
+                        "step6_view_booking_"
+                        f"{service.lower()}_"
+                        f"{booking['booking_id']}"
+                    )
+
+                    if st.button(
+                        "🎫 View Details",
+                        use_container_width=True,
+                        key=view_key,
+                    ):
+                        st.session_state.selected_booking = booking
+                        st.rerun()
+
+                    if is_confirmed:
+
+                        cancel_key = (
+                            "step6_cancel_booking_"
+                            f"{service.lower()}_"
+                            f"{booking['booking_id']}"
+                        )
+
+                        if st.button(
+                            "❌ Cancel",
+                            use_container_width=True,
+                            key=cancel_key,
+                        ):
+                            st.session_state.cancel_target = {
+                                "service": service,
+                                "booking_id": booking["booking_id"],
+                                "amount": amount,
+                                "payment": payment,
+                                "title": booking["title"],
+                            }
+                            st.rerun()
+
+                    elif is_cancelled:
+                        st.caption("Cancellation completed")
+
+    # ------------------------------------------------------------
+    # DIGITAL TICKET / DETAILS
+    # ------------------------------------------------------------
+    selected_booking = st.session_state.get(
+        "selected_booking"
+    )
+
+    if selected_booking:
+
+        st.divider()
+        st.subheader("🎫 Booking Details")
+
+        selected_status = str(
+            selected_booking.get(
+                "status",
+                "unknown"
+            )
+        ).lower()
+
+        selected_service = selected_booking.get(
+            "service",
+            "TRAVELX"
         )
 
+        selected_payment = str(
+            selected_booking.get(
+                "payment",
+                "demo"
+            )
+        ).lower()
 
+        try:
+            selected_amount = float(
+                selected_booking.get(
+                    "amount",
+                    0
+                ) or 0
+            )
+        except (TypeError, ValueError):
+            selected_amount = 0.0
+
+        ticket_left, ticket_right = st.columns(
+            [2.5, 1]
+        )
+
+        with ticket_left:
+
+            st.html(
+                f"""
+                <div style="
+                    padding:28px;
+                    border-radius:22px;
+                    border:1px solid rgba(96,165,250,.22);
+                    background:
+                        radial-gradient(
+                            circle at 90% 10%,
+                            rgba(59,130,246,.18),
+                            transparent 28%
+                        ),
+                        linear-gradient(
+                            145deg,
+                            rgba(30,41,59,.90),
+                            rgba(15,23,42,.96)
+                        );
+                ">
+
+                    <div style="
+                        font-size:12px;
+                        opacity:.60;
+                        font-weight:800;
+                        letter-spacing:1.4px;
+                    ">
+                        TRAVELX DIGITAL TICKET
+                    </div>
+
+                    <div style="
+                        font-size:29px;
+                        font-weight:900;
+                        margin-top:10px;
+                    ">
+                        {selected_booking.get("icon", "🎫")}
+                        {selected_booking.get(
+                            "title",
+                            "TRAVELX Booking"
+                        )}
+                    </div>
+
+                    <div style="
+                        opacity:.68;
+                        margin-top:7px;
+                        font-size:14px;
+                    ">
+                        {selected_service}
+                        • Booking #
+                        {selected_booking.get(
+                            "booking_id",
+                            "-"
+                        )}
+                    </div>
+
+                    <hr style="
+                        border:0;
+                        border-top:
+                            1px solid
+                            rgba(148,163,184,.18);
+                        margin:22px 0;
+                    ">
+
+                    <div style="
+                        font-size:12px;
+                        opacity:.60;
+                        font-weight:800;
+                        letter-spacing:.8px;
+                    ">
+                        JOURNEY / ORDER
+                    </div>
+
+                    <div style="
+                        font-size:20px;
+                        font-weight:800;
+                        margin-top:7px;
+                    ">
+                        {selected_booking.get(
+                            "subtitle",
+                            "TRAVELX"
+                        )}
+                    </div>
+
+                </div>
+                """
+            )
+
+            details = selected_booking.get(
+                "details",
+                []
+            )
+
+            if details:
+                st.write("")
+
+                detail_columns = st.columns(
+                    min(4, len(details))
+                )
+
+                for index, (label, value) in enumerate(
+                    details[:4]
+                ):
+                    with detail_columns[
+                        index % len(detail_columns)
+                    ]:
+                        st.caption(label)
+                        st.write(str(value))
+
+        with ticket_right:
+
+            st.markdown("### 💳 Payment")
+
+            st.metric(
+                "Amount",
+                f"₹{selected_amount:,.0f}"
+            )
+
+            st.caption(
+                "Method: "
+                + (
+                    "TRAVELX WALLET"
+                    if selected_payment == "wallet"
+                    else "DEMO PAYMENT"
+                )
+            )
+
+            if selected_status == "confirmed":
+                st.success("✅ Booking Confirmed")
+
+            elif selected_status in (
+                "cancelled",
+                "canceled",
+            ):
+                st.error("❌ Booking Cancelled")
+
+                if selected_payment == "wallet":
+                    st.success(
+                        f"₹{selected_amount:,.0f} "
+                        "refunded to Wallet"
+                    )
+
+            elif selected_status == "pending":
+                st.warning("⏳ Booking Pending")
+
+            close_ticket_key = (
+                "step6_close_ticket_"
+                f"{str(selected_service).lower()}_"
+                f"{str(selected_booking.get('booking_id', '-'))}"
+            )
+
+            if st.button(
+                "✖️ Close Details",
+                use_container_width=True,
+                key=close_ticket_key,
+            ):
+                st.session_state.selected_booking = None
+                st.rerun()
+
+    # ------------------------------------------------------------
+    # CANCELLATION CONFIRMATION
+    # ------------------------------------------------------------
+    cancel_target = st.session_state.get(
+        "cancel_target"
+    )
+
+    if cancel_target:
+
+        st.divider()
+        st.subheader("⚠️ Confirm Cancellation")
+
+        st.warning(
+            "Please confirm that you want to cancel this booking."
+        )
+
+        confirm_left, confirm_right = st.columns(2)
+
+        with confirm_left:
+            st.markdown(
+                f"""
+                **Service:** {cancel_target["service"]}
+
+                **Booking:** {cancel_target["title"]}
+
+                **Booking ID:** #{cancel_target["booking_id"]}
+
+                **Amount:** ₹{cancel_target["amount"]:,.0f}
+
+                **Payment:** {
+                    "TRAVELX WALLET"
+                    if str(cancel_target["payment"]).lower() == "wallet"
+                    else "DEMO PAYMENT"
+                }
+                """
+            )
+
+        with confirm_right:
+
+            if (
+                str(
+                    cancel_target["payment"]
+                ).lower()
+                == "wallet"
+            ):
+                st.info(
+                    f"💰 ₹{cancel_target['amount']:,.0f} "
+                    "will be refunded to your TRAVELX Wallet."
+                )
+            else:
+                st.info(
+                    "🧪 This booking used Demo Payment. "
+                    "No wallet refund will be created."
+                )
+
+        confirm_button, keep_button = st.columns(2)
+
+        with confirm_button:
+
+            if st.button(
+                "✅ Yes, Cancel Booking",
+                type="primary",
+                use_container_width=True,
+                key="step6_confirm_cancel_booking",
+            ):
+
+                service = cancel_target["service"]
+                booking_id = cancel_target["booking_id"]
+
+                if cancel_booking(
+                    service,
+                    booking_id
+                ):
+                    st.session_state.cancel_target = None
+                    st.session_state.selected_booking = None
+                    st.rerun()
+
+        with keep_button:
+
+            if st.button(
+                "↩️ Keep Booking",
+                use_container_width=True,
+                key="step6_keep_booking",
+            ):
+                st.session_state.cancel_target = None
+                st.rerun()
 # ============================================================
 # PROFILE
 # ============================================================
@@ -6853,102 +11285,303 @@ elif st.session_state.page == "Profile":
     st.title("👤 My Profile")
 
     st.caption(
-        "View your TRAVELX account information."
+        "Manage your TRAVELX account and view your activity overview."
     )
 
     st.divider()
 
+    # --------------------------------------------------------
+    # LOAD PROFILE
+    # --------------------------------------------------------
 
-    response = api_get(
-        "/auth/profile"
-    )
+    response = api_get("/auth/profile")
 
+    if response and response.status_code == 200:
 
-    if (
-        response
-        and response.status_code == 200
-    ):
+        profile = get_json(response)
 
-        profile = get_json(
-            response
-        )
+    # Backend returns profile data inside the "user" object
+        profile_user = profile.get("user", profile)
 
+        name = profile_user.get("name", "User")
+        email = profile_user.get("email", "")
+        phone = profile_user.get("phone", "")
+        user_id = profile_user.get("id", "")
+        # ----------------------------------------------------
+        # PROFILE HERO
+        # ----------------------------------------------------
+
+        st.html(f"""
+        <div style="
+            padding:30px;
+            border-radius:24px;
+            background:
+                radial-gradient(circle at 90% 20%, rgba(96,165,250,.28), transparent 25%),
+                linear-gradient(135deg,#111827,#172554,#1d4ed8);
+            border:1px solid rgba(147,197,253,.20);
+            box-shadow:0 18px 45px rgba(0,0,0,.25);
+            margin-bottom:25px;
+        ">
+            <div style="font-size:52px; margin-bottom:8px;">👋</div>
+            <div style="font-size:32px; font-weight:900; color:white;">
+                Hello, {name}!
+            </div>
+            <div style="font-size:15px; color:#dbeafe; margin-top:8px;">
+                Welcome to your TRAVELX account dashboard.
+            </div>
+        </div>
+        """)
+
+        # ----------------------------------------------------
+        # ACCOUNT INFORMATION
+        # ----------------------------------------------------
+
+        st.subheader("🪪 Account Information")
 
         col1, col2 = st.columns(2)
 
-
         with col1:
-
-            st.subheader(
-                "Personal Information"
-            )
-
-
             st.text_input(
-                "Name",
-                value=profile.get(
-                    "name",
-                    ""
-                ),
+                "Full Name",
+                value=name,
                 disabled=True,
                 key="profile_name"
             )
 
-
             st.text_input(
-                "Email",
-                value=profile.get(
-                    "email",
-                    ""
-                ),
+                "Email Address",
+                value=email,
                 disabled=True,
                 key="profile_email"
             )
 
-
         with col2:
-
-            st.subheader(
-                "Account Details"
-            )
-
-
             st.text_input(
-                "Phone",
-                value=profile.get(
-                    "phone",
-                    ""
-                ),
+                "Phone Number",
+                value=phone,
                 disabled=True,
                 key="profile_phone"
             )
 
-
             st.text_input(
-                "User ID",
-                value=str(
-                    profile.get(
-                        "id",
-                        ""
-                    )
-                ),
+                "TRAVELX User ID",
+                value=str(user_id),
                 disabled=True,
                 key="profile_id"
             )
 
+        st.divider()
+
+        # ----------------------------------------------------
+        # LIVE ACCOUNT STATS
+        # ----------------------------------------------------
+
+        st.subheader("📊 Account Activity")
+
+        endpoints = {
+            "Bus": "/buses/my-bookings",
+            "Train": "/trains/my-bookings",
+            "Flight": "/flights/my-bookings",
+            "Hotel": "/hotels/my-bookings",
+            "Cab": "/cabs/my-bookings",
+            "Food": "/food/my-orders",
+            "Movie": "/movies/my-bookings",
+            "Event": "/events/my-bookings",
+            "Other": "/bookings/my",
+        }
+
+        activity_counts = {}
+        activity_total = 0
+        activity_spent = 0.0
+        activity_confirmed = 0
+
+        for service, endpoint in endpoints.items():
+            service_response = api_get(endpoint)
+
+            if not service_response or service_response.status_code != 200:
+                continue
+
+            service_data = get_json(service_response)
+
+            if not isinstance(service_data, list):
+                continue
+
+            count = len(service_data)
+
+            if count:
+                activity_counts[service] = count
+                activity_total += count
+
+            for item in service_data:
+                amount = item.get("total_price", 0)
+
+                try:
+                    activity_spent += float(amount or 0)
+                except (TypeError, ValueError):
+                    pass
+
+                status = str(
+                    item.get(
+                        "booking_status",
+                        item.get("order_status", "")
+                    )
+                ).lower()
+
+                if status == "confirmed":
+                    activity_confirmed += 1
+
+        wallet_balance = 0.0
+        wallet_response = api_get("/wallet/")
+
+        if wallet_response and wallet_response.status_code == 200:
+            wallet_data = get_json(wallet_response)
+            try:
+                wallet_balance = float(wallet_data.get("balance", 0) or 0)
+            except (TypeError, ValueError):
+                wallet_balance = 0.0
+
+        metric1, metric2, metric3, metric4 = st.columns(4)
+
+        with metric1:
+            st.html(f"""
+            <div class="metric-card">
+                <div class="metric-label">Wallet Balance</div>
+                <div class="metric-value">₹{wallet_balance:,.2f}</div>
+            </div>
+            """)
+
+        with metric2:
+            st.html(f"""
+            <div class="metric-card">
+                <div class="metric-label">Total Bookings</div>
+                <div class="metric-value">{activity_total}</div>
+            </div>
+            """)
+
+        with metric3:
+            st.html(f"""
+            <div class="metric-card">
+                <div class="metric-label">Total Spent</div>
+                <div class="metric-value">₹{activity_spent:,.0f}</div>
+            </div>
+            """)
+
+        with metric4:
+            st.html(f"""
+            <div class="metric-card">
+                <div class="metric-label">Confirmed</div>
+                <div class="metric-value">{activity_confirmed}</div>
+            </div>
+            """)
+
+        # ----------------------------------------------------
+        # SERVICE ACTIVITY
+        # ----------------------------------------------------
+
+        if activity_counts:
+            st.divider()
+            st.subheader("🧩 Services Used")
+
+            service_items = list(activity_counts.items())
+
+            for row in range(0, len(service_items), 4):
+                columns = st.columns(4)
+
+                for index, column in enumerate(columns):
+                    item_index = row + index
+
+                    if item_index >= len(service_items):
+                        continue
+
+                    service, count = service_items[item_index]
+
+                    icons = {
+                        "Bus": "🚌",
+                        "Train": "🚆",
+                        "Flight": "✈️",
+                        "Hotel": "🏨",
+                        "Cab": "🚕",
+                        "Food": "🍔",
+                        "Movie": "🎬",
+                        "Event": "🎟️",
+                        "Other": "📦",
+                    }
+
+                    with column:
+                        st.html(f"""
+                        <div class="metric-card">
+                            <div style="font-size:28px;">{icons.get(service, '📦')}</div>
+                            <div class="metric-label">{service}</div>
+                            <div class="metric-value">{count}</div>
+                        </div>
+                        """)
 
         st.divider()
 
+        # ----------------------------------------------------
+        # ACCOUNT STATUS
+        # ----------------------------------------------------
 
-        st.success(
-            "Your TRAVELX account is active. ✅"
+        st.subheader("🔐 Account Status")
+
+        st.success("Your TRAVELX account is active and authenticated. ✅")
+
+        st.caption(
+            "Your profile information is currently displayed from the TRAVELX backend. "
+            "Profile editing can be added when the account-update API is enabled."
         )
 
+        # ----------------------------------------------------
+        # QUICK ACTIONS
+        # ----------------------------------------------------
+
+        st.subheader("⚡ Quick Actions")
+
+        action1, action2, action3 = st.columns(3)
+
+        with action1:
+            if st.button(
+                "📋 My Bookings",
+                use_container_width=True,
+                key="profile_bookings"
+            ):
+                st.session_state.page = "My Bookings"
+                st.rerun()
+
+        with action2:
+            if st.button(
+                "💰 Open Wallet",
+                use_container_width=True,
+                key="profile_wallet"
+            ):
+                st.session_state.page = "Wallet"
+                st.rerun()
+
+        with action3:
+            if st.button(
+                "🏠 Dashboard",
+                use_container_width=True,
+                key="profile_home"
+            ):
+                st.session_state.page = "Home"
+                st.rerun()
+
+        st.divider()
+
+        if st.button(
+            "🚪 Logout",
+            type="secondary",
+            use_container_width=True,
+            key="profile_logout"
+        ):
+            logout_user()
 
     elif response:
-
         st.error(
-            "Unable to load profile."
+            get_json(response).get(
+                "detail",
+                "Unable to load profile."
+            )
         )
 
 

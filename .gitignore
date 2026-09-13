@@ -1,5 +1,17 @@
 venv/
 __pycache__/
-.env
 *.pyc
+.env
 travelx.db
+# Local development backups
+*_backup.py
+*_before*.py
+travelx_before_*.db
+# Old development frontend snapshots
+frontend/*_step*.py
+
+# Local development / learning files
+TRAVELX_frontend_app_PROFILE.py
+TRAVELX_frontend_app_PROFILE_FIXED.py
+Task3.ipynb
+migrate_bus_payment.py

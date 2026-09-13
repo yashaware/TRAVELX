@@ -60,7 +60,8 @@ def register(
         name=user_data.name,
         email=user_data.email,
         phone=user_data.phone,
-        password=hashed_password
+        password=hashed_password,
+        role="user"
     )
 
     db.add(new_user)
@@ -113,7 +114,8 @@ def login(
     # Create JWT token
     access_token = create_access_token(
         user_id=user.id,
-        email=user.email
+        email=user.email,
+        role=user.role or "user"
     )
 
     return {

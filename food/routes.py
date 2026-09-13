@@ -22,8 +22,15 @@ from food.schemas import (
     FoodOrderItemResponse
 )
 
-from auth.security import get_current_user
+from auth.security import (
+    get_current_user,
+    require_admin
+)
 
+
+# =========================================================
+# FOOD ROUTER
+# =========================================================
 
 food_router = APIRouter(
     prefix="/food",
@@ -43,7 +50,9 @@ def get_all_restaurants(
     current_user=Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    return db.query(Restaurant).order_by(Restaurant.rating.desc()).all()
+    return db.query(Restaurant).order_by(
+        Restaurant.rating.desc()
+    ).all()
 
 
 @food_router.post(
@@ -196,10 +205,6 @@ def create_food_order(
     current_user=Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    # -----------------------------------------------------
-    # Check restaurant
-    # -----------------------------------------------------
-
     restaurant = db.query(Restaurant).filter(
         Restaurant.id == order_data.restaurant_id
     ).first()
@@ -221,10 +226,6 @@ def create_food_order(
             status_code=400,
             detail="Cart is empty."
         )
-
-    # -----------------------------------------------------
-    # Calculate total
-    # -----------------------------------------------------
 
     total_price = 0
     order_items_data = []
@@ -260,11 +261,13 @@ def create_food_order(
             "subtotal": subtotal
         })
 
-    # -----------------------------------------------------
-    # Payment
-    # -----------------------------------------------------
-
     payment_method = order_data.payment_method.strip().lower()
+
+    if payment_method not in ["wallet", "demo"]:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid payment method. Use 'wallet' or 'demo'."
+        )
 
     if payment_method == "wallet":
 
@@ -303,10 +306,6 @@ def create_food_order(
 
         db.add(transaction)
 
-    # -----------------------------------------------------
-    # Create order
-    # -----------------------------------------------------
-
     order = FoodOrder(
         user_id=current_user["id"],
         restaurant_id=restaurant.id,
@@ -320,10 +319,6 @@ def create_food_order(
 
     db.add(order)
     db.flush()
-
-    # -----------------------------------------------------
-    # Create order items
-    # -----------------------------------------------------
 
     for item in order_items_data:
 
@@ -340,10 +335,6 @@ def create_food_order(
 
     db.commit()
     db.refresh(order)
-
-    # -----------------------------------------------------
-    # Return order with items
-    # -----------------------------------------------------
 
     items = db.query(FoodOrderItem).filter(
         FoodOrderItem.order_id == order.id
@@ -428,6 +419,123 @@ def get_my_food_orders(
 
 
 # =========================================================
+# CANCEL FOOD ORDER + WALLET REFUND
+# =========================================================
+
+@food_router.post(
+    "/orders/{order_id}/cancel",
+    response_model=FoodOrderResponse
+)
+def cancel_food_order(
+    order_id: int,
+    current_user=Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+
+    order = db.query(FoodOrder).filter(
+        FoodOrder.id == order_id
+    ).first()
+
+    if not order:
+        raise HTTPException(
+            status_code=404,
+            detail="Food order not found."
+        )
+
+    if order.user_id != current_user["id"]:
+        raise HTTPException(
+            status_code=403,
+            detail="You are not allowed to cancel this order."
+        )
+
+    if order.order_status != "confirmed":
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Order cannot be cancelled because "
+                f"its status is '{order.order_status}'."
+            )
+        )
+
+    restaurant = db.query(Restaurant).filter(
+        Restaurant.id == order.restaurant_id
+    ).first()
+
+    if not restaurant:
+        raise HTTPException(
+            status_code=404,
+            detail="Associated restaurant not found."
+        )
+
+    payment_method = (
+        order.payment_method or "demo"
+    ).strip().lower()
+
+    if payment_method == "wallet":
+
+        wallet = db.query(Wallet).filter(
+            Wallet.user_id == current_user["id"]
+        ).first()
+
+        if not wallet:
+            wallet = Wallet(
+                user_id=current_user["id"],
+                balance=0.0
+            )
+
+            db.add(wallet)
+            db.flush()
+
+        wallet.balance += order.total_price
+
+        refund_transaction = WalletTransaction(
+            user_id=current_user["id"],
+            transaction_type="credit",
+            amount=order.total_price,
+            description=(
+                f"Food order refund - "
+                f"Order #{order.id} - "
+                f"{restaurant.name}"
+            ),
+            balance_after=wallet.balance
+        )
+
+        db.add(refund_transaction)
+
+    order.order_status = "cancelled"
+
+    db.commit()
+    db.refresh(order)
+
+    items = db.query(FoodOrderItem).filter(
+        FoodOrderItem.order_id == order.id
+    ).all()
+
+    return FoodOrderResponse(
+        id=order.id,
+        user_id=order.user_id,
+        restaurant_id=order.restaurant_id,
+        customer_name=order.customer_name,
+        customer_phone=order.customer_phone,
+        delivery_address=order.delivery_address,
+        total_price=order.total_price,
+        payment_method=order.payment_method,
+        order_status=order.order_status,
+        items=[
+            FoodOrderItemResponse(
+                id=item.id,
+                food_item_id=item.food_item_id,
+                item_name=item.item_name,
+                quantity=item.quantity,
+                price=item.price,
+                subtotal=item.subtotal
+            )
+            for item in items
+        ]
+    )
+
+
+# =========================================================
 # SINGLE ORDER
 # =========================================================
 
@@ -477,3 +585,345 @@ def get_food_order(
             for item in items
         ]
     )
+
+
+# =========================================================
+# ADMIN - GET ALL RESTAURANTS
+# =========================================================
+
+@food_router.get(
+    "/admin/restaurants",
+    response_model=list[RestaurantResponse]
+)
+def admin_get_all_restaurants(
+    db: Session = Depends(get_db),
+    _: dict = Depends(require_admin)
+):
+
+    return db.query(Restaurant).order_by(
+        Restaurant.id
+    ).all()
+
+
+# =========================================================
+# ADMIN - CREATE RESTAURANT
+# =========================================================
+
+@food_router.post(
+    "/admin/restaurants",
+    response_model=RestaurantResponse
+)
+def admin_create_restaurant(
+    restaurant_data: RestaurantCreate,
+    db: Session = Depends(get_db),
+    _: dict = Depends(require_admin)
+):
+
+    restaurant = Restaurant(
+        name=restaurant_data.name,
+        city=restaurant_data.city,
+        address=restaurant_data.address,
+        cuisine=restaurant_data.cuisine,
+        description=restaurant_data.description,
+        rating=restaurant_data.rating,
+        delivery_time=restaurant_data.delivery_time,
+        is_open=restaurant_data.is_open
+    )
+
+    db.add(restaurant)
+    db.commit()
+    db.refresh(restaurant)
+
+    return restaurant
+
+
+# =========================================================
+# ADMIN - GET SINGLE RESTAURANT
+# =========================================================
+
+@food_router.get(
+    "/admin/restaurants/{restaurant_id}",
+    response_model=RestaurantResponse
+)
+def admin_get_restaurant(
+    restaurant_id: int,
+    db: Session = Depends(get_db),
+    _: dict = Depends(require_admin)
+):
+
+    restaurant = db.query(Restaurant).filter(
+        Restaurant.id == restaurant_id
+    ).first()
+
+    if not restaurant:
+        raise HTTPException(
+            status_code=404,
+            detail="Restaurant not found."
+        )
+
+    return restaurant
+
+
+# =========================================================
+# ADMIN - UPDATE RESTAURANT
+# =========================================================
+
+@food_router.put(
+    "/admin/restaurants/{restaurant_id}",
+    response_model=RestaurantResponse
+)
+def admin_update_restaurant(
+    restaurant_id: int,
+    restaurant_data: RestaurantCreate,
+    db: Session = Depends(get_db),
+    _: dict = Depends(require_admin)
+):
+
+    restaurant = db.query(Restaurant).filter(
+        Restaurant.id == restaurant_id
+    ).first()
+
+    if not restaurant:
+        raise HTTPException(
+            status_code=404,
+            detail="Restaurant not found."
+        )
+
+    restaurant.name = restaurant_data.name
+    restaurant.city = restaurant_data.city
+    restaurant.address = restaurant_data.address
+    restaurant.cuisine = restaurant_data.cuisine
+    restaurant.description = restaurant_data.description
+    restaurant.rating = restaurant_data.rating
+    restaurant.delivery_time = restaurant_data.delivery_time
+    restaurant.is_open = restaurant_data.is_open
+
+    db.commit()
+    db.refresh(restaurant)
+
+    return restaurant
+
+
+# =========================================================
+# ADMIN - DELETE RESTAURANT
+# =========================================================
+
+@food_router.delete(
+    "/admin/restaurants/{restaurant_id}"
+)
+def admin_delete_restaurant(
+    restaurant_id: int,
+    db: Session = Depends(get_db),
+    _: dict = Depends(require_admin)
+):
+
+    restaurant = db.query(Restaurant).filter(
+        Restaurant.id == restaurant_id
+    ).first()
+
+    if not restaurant:
+        raise HTTPException(
+            status_code=404,
+            detail="Restaurant not found."
+        )
+
+    existing_order = db.query(FoodOrder).filter(
+        FoodOrder.restaurant_id == restaurant_id
+    ).first()
+
+    if existing_order:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Restaurant cannot be deleted because "
+                "orders exist for this restaurant."
+            )
+        )
+
+    existing_menu = db.query(FoodItem).filter(
+        FoodItem.restaurant_id == restaurant_id
+    ).first()
+
+    if existing_menu:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Restaurant cannot be deleted because "
+                "menu items exist for this restaurant."
+            )
+        )
+
+    db.delete(restaurant)
+    db.commit()
+
+    return {
+        "message": "Restaurant deleted successfully.",
+        "restaurant_id": restaurant_id
+    }
+
+
+# =========================================================
+# ADMIN - GET RESTAURANT MENU
+# =========================================================
+
+@food_router.get(
+    "/admin/menu/{restaurant_id}",
+    response_model=list[FoodItemResponse]
+)
+def admin_get_restaurant_menu(
+    restaurant_id: int,
+    db: Session = Depends(get_db),
+    _: dict = Depends(require_admin)
+):
+
+    restaurant = db.query(Restaurant).filter(
+        Restaurant.id == restaurant_id
+    ).first()
+
+    if not restaurant:
+        raise HTTPException(
+            status_code=404,
+            detail="Restaurant not found."
+        )
+
+    return db.query(FoodItem).filter(
+        FoodItem.restaurant_id == restaurant_id
+    ).order_by(
+        FoodItem.category,
+        FoodItem.id
+    ).all()
+
+
+# =========================================================
+# ADMIN - CREATE FOOD ITEM
+# =========================================================
+
+@food_router.post(
+    "/admin/menu",
+    response_model=FoodItemResponse
+)
+def admin_create_food_item(
+    food_data: FoodItemCreate,
+    db: Session = Depends(get_db),
+    _: dict = Depends(require_admin)
+):
+
+    restaurant = db.query(Restaurant).filter(
+        Restaurant.id == food_data.restaurant_id
+    ).first()
+
+    if not restaurant:
+        raise HTTPException(
+            status_code=404,
+            detail="Restaurant not found."
+        )
+
+    food_item = FoodItem(
+        restaurant_id=food_data.restaurant_id,
+        name=food_data.name,
+        category=food_data.category,
+        description=food_data.description,
+        price=food_data.price,
+        is_available=food_data.is_available
+    )
+
+    db.add(food_item)
+    db.commit()
+    db.refresh(food_item)
+
+    return food_item
+
+
+# =========================================================
+# ADMIN - UPDATE FOOD ITEM
+# =========================================================
+
+@food_router.put(
+    "/admin/menu/{item_id}",
+    response_model=FoodItemResponse
+)
+def admin_update_food_item(
+    item_id: int,
+    food_data: FoodItemCreate,
+    db: Session = Depends(get_db),
+    _: dict = Depends(require_admin)
+):
+
+    food_item = db.query(FoodItem).filter(
+        FoodItem.id == item_id
+    ).first()
+
+    if not food_item:
+        raise HTTPException(
+            status_code=404,
+            detail="Food item not found."
+        )
+
+    restaurant = db.query(Restaurant).filter(
+        Restaurant.id == food_data.restaurant_id
+    ).first()
+
+    if not restaurant:
+        raise HTTPException(
+            status_code=404,
+            detail="Restaurant not found."
+        )
+
+    food_item.restaurant_id = food_data.restaurant_id
+    food_item.name = food_data.name
+    food_item.category = food_data.category
+    food_item.description = food_data.description
+    food_item.price = food_data.price
+    food_item.is_available = food_data.is_available
+
+    db.commit()
+    db.refresh(food_item)
+
+    return food_item
+
+
+# =========================================================
+# ADMIN - DELETE FOOD ITEM
+# =========================================================
+
+@food_router.delete(
+    "/admin/menu/{item_id}"
+)
+def admin_delete_food_item(
+    item_id: int,
+    db: Session = Depends(get_db),
+    _: dict = Depends(require_admin)
+):
+
+    food_item = db.query(FoodItem).filter(
+        FoodItem.id == item_id
+    ).first()
+
+    if not food_item:
+        raise HTTPException(
+            status_code=404,
+            detail="Food item not found."
+        )
+
+    existing_order_item = db.query(
+        FoodOrderItem
+    ).filter(
+        FoodOrderItem.food_item_id == item_id
+    ).first()
+
+    if existing_order_item:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Food item cannot be deleted because "
+                "it exists in an order."
+            )
+        )
+
+    db.delete(food_item)
+    db.commit()
+
+    return {
+        "message": "Food item deleted successfully.",
+        "item_id": item_id
+    }

@@ -1,9 +1,18 @@
 from datetime import datetime, timedelta, timezone
+import os
 
+from dotenv import load_dotenv
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from passlib.context import CryptContext
 from jose import JWTError, jwt
+
+
+# =========================================================
+# LOAD ENVIRONMENT VARIABLES
+# =========================================================
+
+load_dotenv()
 
 
 # =========================================================
@@ -28,11 +37,24 @@ def verify_password(password: str, hashed_password: str) -> bool:
 # JWT CONFIGURATION
 # =========================================================
 
-SECRET_KEY = "TRAVELX_SECRET_KEY_2026_CHANGE_ME"
+SECRET_KEY = os.getenv("TRAVELX_SECRET_KEY")
+
+if not SECRET_KEY:
+    raise RuntimeError(
+        "TRAVELX_SECRET_KEY is missing. "
+        "Add it to the .env file."
+    )
+
 
 ALGORITHM = "HS256"
 
-ACCESS_TOKEN_EXPIRE_MINUTES = 60
+
+ACCESS_TOKEN_EXPIRE_MINUTES = int(
+    os.getenv(
+        "TRAVELX_JWT_EXPIRE_MINUTES",
+        "60"
+    )
+)
 
 
 # =========================================================
@@ -46,7 +68,11 @@ security = HTTPBearer()
 # CREATE ACCESS TOKEN
 # =========================================================
 
-def create_access_token(user_id: int, email: str) -> str:
+def create_access_token(
+    user_id: int,
+    email: str,
+    role: str = "user"
+) -> str:
 
     expire = datetime.now(timezone.utc) + timedelta(
         minutes=ACCESS_TOKEN_EXPIRE_MINUTES
@@ -55,6 +81,7 @@ def create_access_token(user_id: int, email: str) -> str:
     payload = {
         "sub": str(user_id),
         "email": email,
+        "role": role,
         "exp": expire
     }
 
@@ -87,8 +114,10 @@ def get_current_user(
 
         user_id = payload.get("sub")
         email = payload.get("email")
+        role = payload.get("role", "user")
 
         if user_id is None or email is None:
+
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid token"
@@ -96,7 +125,8 @@ def get_current_user(
 
         return {
             "id": int(user_id),
-            "email": email
+            "email": email,
+            "role": role
         }
 
     except (JWTError, ValueError, TypeError):
@@ -105,3 +135,21 @@ def get_current_user(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired token"
         )
+
+
+# =========================================================
+# REQUIRE ADMIN
+# =========================================================
+
+def require_admin(
+    current_user=Depends(get_current_user)
+):
+
+    if current_user.get("role") != "admin":
+
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required"
+        )
+
+    return current_user

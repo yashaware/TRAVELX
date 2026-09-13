@@ -2,7 +2,6 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from db.database import get_db
-
 from db.models import (
     Hotel,
     HotelBooking,
@@ -18,7 +17,10 @@ from hotels.schemas import (
     HotelBookingResponse
 )
 
-from auth.security import get_current_user
+from auth.security import (
+    get_current_user,
+    require_admin
+)
 
 
 # ============================================================
@@ -43,14 +45,9 @@ def get_all_hotels(
     current_user=Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-
-    hotels = db.query(
-        Hotel
-    ).order_by(
+    return db.query(Hotel).order_by(
         Hotel.id
     ).all()
-
-    return hotels
 
 
 # ============================================================
@@ -66,7 +63,6 @@ def create_hotel(
     current_user=Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-
     hotel = Hotel(
         name=hotel_data.name,
         city=hotel_data.city,
@@ -79,9 +75,7 @@ def create_hotel(
     )
 
     db.add(hotel)
-
     db.commit()
-
     db.refresh(hotel)
 
     return hotel
@@ -100,13 +94,10 @@ def search_hotels(
     current_user=Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-
-    city = search_data.city.strip()
-
-    hotels = db.query(
-        Hotel
-    ).filter(
-        Hotel.city.ilike(city)
+    hotels = db.query(Hotel).filter(
+        Hotel.city.ilike(
+            search_data.city.strip()
+        )
     ).order_by(
         Hotel.rating.desc()
     ).all()
@@ -115,7 +106,7 @@ def search_hotels(
 
 
 # ============================================================
-# BOOK HOTEL
+# CREATE HOTEL BOOKING
 # ============================================================
 
 @hotel_router.post(
@@ -128,42 +119,55 @@ def create_hotel_booking(
     db: Session = Depends(get_db)
 ):
 
-    # --------------------------------------------------------
+    # ========================================================
     # FIND HOTEL
-    # --------------------------------------------------------
+    # ========================================================
 
-    hotel = db.query(
-        Hotel
-    ).filter(
+    hotel = db.query(Hotel).filter(
         Hotel.id == booking_data.hotel_id
     ).first()
 
     if not hotel:
-
         raise HTTPException(
             status_code=404,
-            detail="Hotel not found."
+            detail="Hotel not found"
         )
 
 
-    # --------------------------------------------------------
-    # CHECK ROOM AVAILABILITY
-    # --------------------------------------------------------
+    # ========================================================
+    # VALIDATE ROOMS
+    # ========================================================
+
+    if booking_data.rooms <= 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Number of rooms must be greater than 0"
+        )
 
     if booking_data.rooms > hotel.available_rooms:
-
         raise HTTPException(
             status_code=400,
             detail=(
-                "Not enough rooms available. "
-                f"Available: {hotel.available_rooms}"
+                f"Only {hotel.available_rooms} "
+                f"rooms are available"
             )
         )
 
 
-    # --------------------------------------------------------
-    # CALCULATE TOTAL PRICE
-    # --------------------------------------------------------
+    # ========================================================
+    # VALIDATE NIGHTS
+    # ========================================================
+
+    if booking_data.nights <= 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Number of nights must be greater than 0"
+        )
+
+
+    # ========================================================
+    # CALCULATE TOTAL
+    # ========================================================
 
     total_price = (
         hotel.price_per_night
@@ -172,9 +176,9 @@ def create_hotel_booking(
     )
 
 
-    # --------------------------------------------------------
+    # ========================================================
     # PAYMENT METHOD
-    # --------------------------------------------------------
+    # ========================================================
 
     payment_method = (
         booking_data.payment_method
@@ -182,36 +186,46 @@ def create_hotel_booking(
         .lower()
     )
 
+    if payment_method not in ["wallet", "demo"]:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Invalid payment method. "
+                "Use 'wallet' or 'demo'."
+            )
+        )
 
-    # --------------------------------------------------------
+
+    # ========================================================
     # WALLET PAYMENT
-    # --------------------------------------------------------
+    # ========================================================
 
     if payment_method == "wallet":
 
-        wallet = db.query(
-            Wallet
-        ).filter(
+        wallet = db.query(Wallet).filter(
             Wallet.user_id == current_user["id"]
         ).first()
 
 
-        # Create wallet if it doesn't exist
-        if not wallet:
+        # ----------------------------------------------------
+        # CREATE WALLET IF NOT EXISTS
+        # ----------------------------------------------------
 
+        if not wallet:
             wallet = Wallet(
                 user_id=current_user["id"],
                 balance=0.0
             )
 
             db.add(wallet)
-
             db.flush()
 
 
-        # Check wallet balance
-        if wallet.balance < total_price:
+        # ----------------------------------------------------
+        # CHECK BALANCE
+        # ----------------------------------------------------
 
+        if wallet.balance < total_price:
             raise HTTPException(
                 status_code=400,
                 detail=(
@@ -222,11 +236,17 @@ def create_hotel_booking(
             )
 
 
-        # Deduct amount
+        # ----------------------------------------------------
+        # DEDUCT MONEY
+        # ----------------------------------------------------
+
         wallet.balance -= total_price
 
 
-        # Create transaction
+        # ----------------------------------------------------
+        # WALLET DEBIT TRANSACTION
+        # ----------------------------------------------------
+
         transaction = WalletTransaction(
             user_id=current_user["id"],
             transaction_type="debit",
@@ -242,20 +262,20 @@ def create_hotel_booking(
         db.add(transaction)
 
 
-    # --------------------------------------------------------
+    # ========================================================
     # REDUCE AVAILABLE ROOMS
-    # --------------------------------------------------------
+    # ========================================================
 
     hotel.available_rooms -= booking_data.rooms
 
 
-    # --------------------------------------------------------
+    # ========================================================
     # CREATE HOTEL BOOKING
-    # --------------------------------------------------------
+    # ========================================================
 
     booking = HotelBooking(
         user_id=current_user["id"],
-        hotel_id=hotel.id,
+        hotel_id=booking_data.hotel_id,
         guest_name=booking_data.guest_name,
         guest_phone=booking_data.guest_phone,
         rooms=booking_data.rooms,
@@ -268,14 +288,13 @@ def create_hotel_booking(
     db.add(booking)
 
     db.commit()
-
     db.refresh(booking)
 
     return booking
 
 
 # ============================================================
-# MY HOTEL BOOKINGS
+# GET MY HOTEL BOOKINGS
 # ============================================================
 
 @hotel_router.get(
@@ -299,6 +318,366 @@ def get_my_hotel_bookings(
 
 
 # ============================================================
+# CANCEL HOTEL BOOKING + WALLET REFUND
+# ============================================================
+
+@hotel_router.post(
+    "/bookings/{booking_id}/cancel",
+    response_model=HotelBookingResponse
+)
+def cancel_hotel_booking(
+    booking_id: int,
+    current_user=Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+
+    # ========================================================
+    # FIND BOOKING
+    # ========================================================
+
+    booking = db.query(
+        HotelBooking
+    ).filter(
+        HotelBooking.id == booking_id
+    ).first()
+
+    if not booking:
+        raise HTTPException(
+            status_code=404,
+            detail="Hotel booking not found"
+        )
+
+
+    # ========================================================
+    # CHECK OWNERSHIP
+    # ========================================================
+
+    if booking.user_id != current_user["id"]:
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "You are not allowed to "
+                "cancel this booking"
+            )
+        )
+
+
+    # ========================================================
+    # CHECK BOOKING STATUS
+    # ========================================================
+
+    if booking.booking_status != "confirmed":
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Booking cannot be cancelled because "
+                f"its status is '{booking.booking_status}'"
+            )
+        )
+
+
+    # ========================================================
+    # FIND HOTEL
+    # ========================================================
+
+    hotel = db.query(
+        Hotel
+    ).filter(
+        Hotel.id == booking.hotel_id
+    ).first()
+
+    if not hotel:
+        raise HTTPException(
+            status_code=404,
+            detail="Associated hotel not found"
+        )
+
+
+    # ========================================================
+    # RESTORE HOTEL ROOMS
+    # ========================================================
+
+    hotel.available_rooms += booking.rooms
+
+
+    # ========================================================
+    # WALLET REFUND
+    # ========================================================
+
+    payment_method = (
+        booking.payment_method or "demo"
+    ).strip().lower()
+
+
+    if payment_method == "wallet":
+
+        wallet = db.query(
+            Wallet
+        ).filter(
+            Wallet.user_id == current_user["id"]
+        ).first()
+
+
+        # ----------------------------------------------------
+        # CREATE WALLET IF NOT EXISTS
+        # ----------------------------------------------------
+
+        if not wallet:
+
+            wallet = Wallet(
+                user_id=current_user["id"],
+                balance=0.0
+            )
+
+            db.add(wallet)
+            db.flush()
+
+
+        # ----------------------------------------------------
+        # CREDIT REFUND
+        # ----------------------------------------------------
+
+        wallet.balance += booking.total_price
+
+
+        # ----------------------------------------------------
+        # CREATE REFUND TRANSACTION
+        # ----------------------------------------------------
+
+        refund_transaction = WalletTransaction(
+            user_id=current_user["id"],
+            transaction_type="credit",
+            amount=booking.total_price,
+            description=(
+                f"Hotel booking refund - "
+                f"Booking #{booking.id} - "
+                f"{hotel.name}"
+            ),
+            balance_after=wallet.balance
+        )
+
+        db.add(refund_transaction)
+
+
+    # ========================================================
+    # MARK BOOKING AS CANCELLED
+    # ========================================================
+
+    booking.booking_status = "cancelled"
+
+
+    # ========================================================
+    # SAVE
+    # ========================================================
+
+    db.commit()
+    db.refresh(booking)
+
+    return booking
+
+
+# ============================================================
+# ============================================================
+# HOTEL ADMIN CRUD
+# ============================================================
+# ============================================================
+
+
+# ============================================================
+# ADMIN GET ALL HOTELS
+# ============================================================
+
+@hotel_router.get(
+    "/admin/all",
+    response_model=list[HotelResponse]
+)
+def admin_get_all_hotels(
+    db: Session = Depends(get_db),
+    _: dict = Depends(require_admin)
+):
+
+    return db.query(
+        Hotel
+    ).order_by(
+        Hotel.id.desc()
+    ).all()
+
+
+# ============================================================
+# ADMIN CREATE HOTEL
+# ============================================================
+
+@hotel_router.post(
+    "/admin/create",
+    response_model=HotelResponse
+)
+def admin_create_hotel(
+    hotel_data: HotelCreate,
+    db: Session = Depends(get_db),
+    _: dict = Depends(require_admin)
+):
+
+    hotel = Hotel(
+        name=hotel_data.name,
+        city=hotel_data.city,
+        address=hotel_data.address,
+        description=hotel_data.description,
+        rating=hotel_data.rating,
+        price_per_night=hotel_data.price_per_night,
+        available_rooms=hotel_data.available_rooms,
+        amenities=hotel_data.amenities
+    )
+
+    db.add(hotel)
+    db.commit()
+    db.refresh(hotel)
+
+    return hotel
+
+
+# ============================================================
+# ADMIN GET SINGLE HOTEL
+# ============================================================
+
+@hotel_router.get(
+    "/admin/{hotel_id}",
+    response_model=HotelResponse
+)
+def admin_get_hotel(
+    hotel_id: int,
+    db: Session = Depends(get_db),
+    _: dict = Depends(require_admin)
+):
+
+    hotel = db.query(
+        Hotel
+    ).filter(
+        Hotel.id == hotel_id
+    ).first()
+
+    if not hotel:
+        raise HTTPException(
+            status_code=404,
+            detail="Hotel not found"
+        )
+
+    return hotel
+
+
+# ============================================================
+# ADMIN UPDATE HOTEL
+# ============================================================
+
+@hotel_router.put(
+    "/admin/{hotel_id}",
+    response_model=HotelResponse
+)
+def admin_update_hotel(
+    hotel_id: int,
+    hotel_data: HotelCreate,
+    db: Session = Depends(get_db),
+    _: dict = Depends(require_admin)
+):
+
+    hotel = db.query(
+        Hotel
+    ).filter(
+        Hotel.id == hotel_id
+    ).first()
+
+    if not hotel:
+        raise HTTPException(
+            status_code=404,
+            detail="Hotel not found"
+        )
+
+
+    # --------------------------------------------------------
+    # UPDATE HOTEL
+    # --------------------------------------------------------
+
+    hotel.name = hotel_data.name
+    hotel.city = hotel_data.city
+    hotel.address = hotel_data.address
+    hotel.description = hotel_data.description
+    hotel.rating = hotel_data.rating
+    hotel.price_per_night = hotel_data.price_per_night
+    hotel.available_rooms = hotel_data.available_rooms
+    hotel.amenities = hotel_data.amenities
+
+
+    db.commit()
+    db.refresh(hotel)
+
+    return hotel
+
+
+# ============================================================
+# ADMIN DELETE HOTEL
+# ============================================================
+
+@hotel_router.delete(
+    "/admin/{hotel_id}"
+)
+def admin_delete_hotel(
+    hotel_id: int,
+    db: Session = Depends(get_db),
+    _: dict = Depends(require_admin)
+):
+
+    # --------------------------------------------------------
+    # FIND HOTEL
+    # --------------------------------------------------------
+
+    hotel = db.query(
+        Hotel
+    ).filter(
+        Hotel.id == hotel_id
+    ).first()
+
+    if not hotel:
+        raise HTTPException(
+            status_code=404,
+            detail="Hotel not found"
+        )
+
+
+    # --------------------------------------------------------
+    # CHECK EXISTING BOOKINGS
+    # --------------------------------------------------------
+
+    existing_booking = db.query(
+        HotelBooking
+    ).filter(
+        HotelBooking.hotel_id == hotel_id
+    ).first()
+
+
+    if existing_booking:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Cannot delete this hotel because "
+                "bookings are associated with it."
+            )
+        )
+
+
+    # --------------------------------------------------------
+    # DELETE HOTEL
+    # --------------------------------------------------------
+
+    db.delete(hotel)
+    db.commit()
+
+
+    return {
+        "message": "Hotel deleted successfully.",
+        "hotel_id": hotel_id
+    }
+
+
+# ============================================================
 # GET SINGLE HOTEL
 # ============================================================
 
@@ -319,10 +698,9 @@ def get_hotel(
     ).first()
 
     if not hotel:
-
         raise HTTPException(
             status_code=404,
-            detail="Hotel not found."
+            detail="Hotel not found"
         )
 
     return hotel

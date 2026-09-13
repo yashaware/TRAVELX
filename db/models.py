@@ -40,6 +40,12 @@ class User(Base):
         nullable=False
     )
 
+    role = Column(
+        String,
+        default="user",
+        nullable=False
+    )
+
     created_at = Column(
         DateTime,
         default=datetime.utcnow
@@ -152,6 +158,11 @@ class BusBooking(Base):
     total_price = Column(
         Integer,
         nullable=False
+    )
+
+    payment_method = Column(
+        String,
+        default="demo"
     )
 
     booking_status = Column(
@@ -643,7 +654,7 @@ class CabBooking(Base):
     booking_status = Column(String, default="confirmed")
 
     created_at = Column(DateTime, default=datetime.utcnow)
-    
+
 # =========================
 # FOOD ORDERING MODELS
 # =========================
