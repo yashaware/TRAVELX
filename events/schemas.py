@@ -33,7 +33,7 @@ class EventSearch(BaseModel):
 
 
 # =========================================================
-# VENUE
+# EVENT VENUE
 # =========================================================
 
 class EventVenueCreate(BaseModel):

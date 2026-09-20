@@ -25,7 +25,10 @@ from events.schemas import (
     EventBookingResponse
 )
 
-from auth.security import get_current_user
+from auth.security import (
+    get_current_user,
+    require_admin
+)
 
 
 event_router = APIRouter(
@@ -35,7 +38,149 @@ event_router = APIRouter(
 
 
 # =========================================================
-# EVENTS
+# ADMIN - EVENTS
+# =========================================================
+
+@event_router.get(
+    "/admin/all",
+    response_model=list[EventResponse]
+)
+def admin_get_all_events(
+    db: Session = Depends(get_db),
+    current_admin=Depends(require_admin)
+):
+    return db.query(Event).order_by(
+        Event.id.desc()
+    ).all()
+
+
+@event_router.post(
+    "/admin/create",
+    response_model=EventResponse
+)
+def admin_create_event(
+    event_data: EventCreate,
+    db: Session = Depends(get_db),
+    current_admin=Depends(require_admin)
+):
+    event = Event(
+        name=event_data.name,
+        category=event_data.category,
+        description=event_data.description,
+        language=event_data.language,
+        duration_minutes=event_data.duration_minutes,
+        rating=event_data.rating,
+        image_url=event_data.image_url
+    )
+
+    db.add(event)
+    db.commit()
+    db.refresh(event)
+
+    return event
+
+
+@event_router.get(
+    "/admin/{event_id}",
+    response_model=EventResponse
+)
+def admin_get_event(
+    event_id: int,
+    db: Session = Depends(get_db),
+    current_admin=Depends(require_admin)
+):
+    event = db.query(Event).filter(
+        Event.id == event_id
+    ).first()
+
+    if not event:
+        raise HTTPException(
+            status_code=404,
+            detail="Event not found."
+        )
+
+    return event
+
+
+@event_router.put(
+    "/admin/{event_id}",
+    response_model=EventResponse
+)
+def admin_update_event(
+    event_id: int,
+    event_data: EventCreate,
+    db: Session = Depends(get_db),
+    current_admin=Depends(require_admin)
+):
+    event = db.query(Event).filter(
+        Event.id == event_id
+    ).first()
+
+    if not event:
+        raise HTTPException(
+            status_code=404,
+            detail="Event not found."
+        )
+
+    event.name = event_data.name
+    event.category = event_data.category
+    event.description = event_data.description
+    event.language = event_data.language
+    event.duration_minutes = event_data.duration_minutes
+    event.rating = event_data.rating
+    event.image_url = event_data.image_url
+
+    db.commit()
+    db.refresh(event)
+
+    return event
+
+
+@event_router.delete(
+    "/admin/{event_id}"
+)
+def admin_delete_event(
+    event_id: int,
+    db: Session = Depends(get_db),
+    current_admin=Depends(require_admin)
+):
+    event = db.query(Event).filter(
+        Event.id == event_id
+    ).first()
+
+    if not event:
+        raise HTTPException(
+            status_code=404,
+            detail="Event not found."
+        )
+
+    booking_exists = db.query(EventBooking).filter(
+        EventBooking.event_id == event_id
+    ).first()
+
+    if booking_exists:
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot delete event because bookings exist."
+        )
+
+    db.query(EventShow).filter(
+        EventShow.event_id == event_id
+    ).delete(
+        synchronize_session=False
+    )
+
+    db.delete(event)
+    db.commit()
+
+    return {
+        "message": "Event deleted successfully.",
+        "event_id": event_id
+    }
+
+
+# =========================================================
+# CUSTOMER - EVENTS
 # =========================================================
 
 @event_router.get(
@@ -60,7 +205,6 @@ def create_event(
     current_user=Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-
     event = Event(
         name=event_data.name,
         category=event_data.category,
@@ -87,7 +231,6 @@ def search_events(
     current_user=Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-
     query = db.query(Event)
 
     if search_data.category:
@@ -110,7 +253,143 @@ def search_events(
 
 
 # =========================================================
-# VENUES
+# ADMIN - VENUES
+# =========================================================
+
+@event_router.get(
+    "/admin/venues/all",
+    response_model=list[EventVenueResponse]
+)
+def admin_get_all_event_venues(
+    db: Session = Depends(get_db),
+    current_admin=Depends(require_admin)
+):
+    return db.query(EventVenue).order_by(
+        EventVenue.id.desc()
+    ).all()
+
+
+@event_router.post(
+    "/admin/venues/create",
+    response_model=EventVenueResponse
+)
+def admin_create_event_venue(
+    venue_data: EventVenueCreate,
+    db: Session = Depends(get_db),
+    current_admin=Depends(require_admin)
+):
+    venue = EventVenue(
+        name=venue_data.name,
+        city=venue_data.city,
+        address=venue_data.address,
+        capacity=venue_data.capacity
+    )
+
+    db.add(venue)
+    db.commit()
+    db.refresh(venue)
+
+    return venue
+
+
+@event_router.get(
+    "/admin/venues/{venue_id}",
+    response_model=EventVenueResponse
+)
+def admin_get_event_venue(
+    venue_id: int,
+    db: Session = Depends(get_db),
+    current_admin=Depends(require_admin)
+):
+    venue = db.query(EventVenue).filter(
+        EventVenue.id == venue_id
+    ).first()
+
+    if not venue:
+        raise HTTPException(
+            status_code=404,
+            detail="Event venue not found."
+        )
+
+    return venue
+
+
+@event_router.put(
+    "/admin/venues/{venue_id}",
+    response_model=EventVenueResponse
+)
+def admin_update_event_venue(
+    venue_id: int,
+    venue_data: EventVenueCreate,
+    db: Session = Depends(get_db),
+    current_admin=Depends(require_admin)
+):
+    venue = db.query(EventVenue).filter(
+        EventVenue.id == venue_id
+    ).first()
+
+    if not venue:
+        raise HTTPException(
+            status_code=404,
+            detail="Event venue not found."
+        )
+
+    venue.name = venue_data.name
+    venue.city = venue_data.city
+    venue.address = venue_data.address
+    venue.capacity = venue_data.capacity
+
+    db.commit()
+    db.refresh(venue)
+
+    return venue
+
+
+@event_router.delete(
+    "/admin/venues/{venue_id}"
+)
+def admin_delete_event_venue(
+    venue_id: int,
+    db: Session = Depends(get_db),
+    current_admin=Depends(require_admin)
+):
+    venue = db.query(EventVenue).filter(
+        EventVenue.id == venue_id
+    ).first()
+
+    if not venue:
+        raise HTTPException(
+            status_code=404,
+            detail="Event venue not found."
+        )
+
+    booking_exists = db.query(EventBooking).filter(
+        EventBooking.venue_id == venue_id
+    ).first()
+
+    if booking_exists:
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot delete venue because bookings exist."
+        )
+
+    db.query(EventShow).filter(
+        EventShow.venue_id == venue_id
+    ).delete(
+        synchronize_session=False
+    )
+
+    db.delete(venue)
+    db.commit()
+
+    return {
+        "message": "Event venue deleted successfully.",
+        "venue_id": venue_id
+    }
+
+
+# =========================================================
+# CUSTOMER - VENUES
 # =========================================================
 
 @event_router.get(
@@ -121,7 +400,6 @@ def get_all_event_venues(
     current_user=Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-
     return db.query(EventVenue).order_by(
         EventVenue.city,
         EventVenue.name
@@ -137,7 +415,6 @@ def create_event_venue(
     current_user=Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-
     venue = EventVenue(
         name=venue_data.name,
         city=venue_data.city,
@@ -161,7 +438,6 @@ def search_event_venues(
     current_user=Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-
     return db.query(EventVenue).filter(
         EventVenue.city.ilike(
             search_data.city.strip()
@@ -172,18 +448,122 @@ def search_event_venues(
 
 
 # =========================================================
-# EVENT SHOWS
+# ADMIN - EVENT SHOWS
 # =========================================================
 
+@event_router.get(
+    "/admin/shows/all",
+    response_model=list[EventShowResponse]
+)
+def admin_get_all_event_shows(
+    db: Session = Depends(get_db),
+    current_admin=Depends(require_admin)
+):
+    return db.query(EventShow).order_by(
+        EventShow.id.desc()
+    ).all()
+
+
 @event_router.post(
-    "/shows",
+    "/admin/shows/create",
     response_model=EventShowResponse
 )
-def create_event_show(
+def admin_create_event_show(
     show_data: EventShowCreate,
-    current_user=Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_admin=Depends(require_admin)
 ):
+    event = db.query(Event).filter(
+        Event.id == show_data.event_id
+    ).first()
+
+    if not event:
+        raise HTTPException(
+            status_code=404,
+            detail="Event not found."
+        )
+
+    venue = db.query(EventVenue).filter(
+        EventVenue.id == show_data.venue_id
+    ).first()
+
+    if not venue:
+        raise HTTPException(
+            status_code=404,
+            detail="Event venue not found."
+        )
+
+    if show_data.available_tickets > show_data.total_tickets:
+        raise HTTPException(
+            status_code=400,
+            detail="Available tickets cannot exceed total tickets."
+        )
+
+    if show_data.total_tickets > venue.capacity:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Total tickets cannot exceed venue capacity ({venue.capacity})."
+        )
+
+    show = EventShow(
+        event_id=show_data.event_id,
+        venue_id=show_data.venue_id,
+        show_date=show_data.show_date,
+        show_time=show_data.show_time,
+        ticket_type=show_data.ticket_type,
+        ticket_price=show_data.ticket_price,
+        total_tickets=show_data.total_tickets,
+        available_tickets=show_data.available_tickets
+    )
+
+    db.add(show)
+    db.commit()
+    db.refresh(show)
+
+    return show
+
+
+@event_router.get(
+    "/admin/shows/{show_id}",
+    response_model=EventShowResponse
+)
+def admin_get_event_show(
+    show_id: int,
+    db: Session = Depends(get_db),
+    current_admin=Depends(require_admin)
+):
+    show = db.query(EventShow).filter(
+        EventShow.id == show_id
+    ).first()
+
+    if not show:
+        raise HTTPException(
+            status_code=404,
+            detail="Event show not found."
+        )
+
+    return show
+
+
+@event_router.put(
+    "/admin/shows/{show_id}",
+    response_model=EventShowResponse
+)
+def admin_update_event_show(
+    show_id: int,
+    show_data: EventShowCreate,
+    db: Session = Depends(get_db),
+    current_admin=Depends(require_admin)
+):
+    show = db.query(EventShow).filter(
+        EventShow.id == show_id
+    ).first()
+
+    if not show:
+        raise HTTPException(
+            status_code=404,
+            detail="Event show not found."
+        )
 
     event = db.query(Event).filter(
         Event.id == show_data.event_id
@@ -209,6 +589,109 @@ def create_event_show(
         raise HTTPException(
             status_code=400,
             detail="Available tickets cannot exceed total tickets."
+        )
+
+    if show_data.total_tickets > venue.capacity:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Total tickets cannot exceed venue capacity ({venue.capacity})."
+        )
+
+    show.event_id = show_data.event_id
+    show.venue_id = show_data.venue_id
+    show.show_date = show_data.show_date
+    show.show_time = show_data.show_time
+    show.ticket_type = show_data.ticket_type
+    show.ticket_price = show_data.ticket_price
+    show.total_tickets = show_data.total_tickets
+    show.available_tickets = show_data.available_tickets
+
+    db.commit()
+    db.refresh(show)
+
+    return show
+
+
+@event_router.delete(
+    "/admin/shows/{show_id}"
+)
+def admin_delete_event_show(
+    show_id: int,
+    db: Session = Depends(get_db),
+    current_admin=Depends(require_admin)
+):
+    show = db.query(EventShow).filter(
+        EventShow.id == show_id
+    ).first()
+
+    if not show:
+        raise HTTPException(
+            status_code=404,
+            detail="Event show not found."
+        )
+
+    booking_exists = db.query(EventBooking).filter(
+        EventBooking.show_id == show_id
+    ).first()
+
+    if booking_exists:
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot delete show because bookings exist."
+        )
+
+    db.delete(show)
+    db.commit()
+
+    return {
+        "message": "Event show deleted successfully.",
+        "show_id": show_id
+    }
+
+
+# =========================================================
+# CUSTOMER - EVENT SHOWS
+# =========================================================
+
+@event_router.post(
+    "/shows",
+    response_model=EventShowResponse
+)
+def create_event_show(
+    show_data: EventShowCreate,
+    current_user=Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    event = db.query(Event).filter(
+        Event.id == show_data.event_id
+    ).first()
+
+    if not event:
+        raise HTTPException(
+            status_code=404,
+            detail="Event not found."
+        )
+
+    venue = db.query(EventVenue).filter(
+        EventVenue.id == show_data.venue_id
+    ).first()
+
+    if not venue:
+        raise HTTPException(
+            status_code=404,
+            detail="Event venue not found."
+        )
+
+    if show_data.available_tickets > show_data.total_tickets:
+        raise HTTPException(
+            status_code=400,
+            detail="Available tickets cannot exceed total tickets."
+        )
+
+    if show_data.total_tickets > venue.capacity:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Total tickets cannot exceed venue capacity ({venue.capacity})."
         )
 
     show = EventShow(
@@ -238,7 +721,6 @@ def get_event_shows(
     current_user=Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-
     event = db.query(Event).filter(
         Event.id == event_id
     ).first()
@@ -267,7 +749,6 @@ def get_venue_shows(
     current_user=Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-
     venue = db.query(EventVenue).filter(
         EventVenue.id == venue_id
     ).first()
@@ -296,7 +777,6 @@ def get_event_show(
     current_user=Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-
     show = db.query(EventShow).filter(
         EventShow.id == show_id
     ).first()
@@ -323,11 +803,6 @@ def create_event_booking(
     current_user=Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-
-    # -----------------------------------------------------
-    # Validate event
-    # -----------------------------------------------------
-
     event = db.query(Event).filter(
         Event.id == booking_data.event_id
     ).first()
@@ -337,10 +812,6 @@ def create_event_booking(
             status_code=404,
             detail="Event not found."
         )
-
-    # -----------------------------------------------------
-    # Validate venue
-    # -----------------------------------------------------
 
     venue = db.query(EventVenue).filter(
         EventVenue.id == booking_data.venue_id
@@ -352,10 +823,6 @@ def create_event_booking(
             detail="Event venue not found."
         )
 
-    # -----------------------------------------------------
-    # Validate show
-    # -----------------------------------------------------
-
     show = db.query(EventShow).filter(
         EventShow.id == booking_data.show_id
     ).first()
@@ -365,10 +832,6 @@ def create_event_booking(
             status_code=404,
             detail="Event show not found."
         )
-
-    # -----------------------------------------------------
-    # Verify event + venue + show
-    # -----------------------------------------------------
 
     if show.event_id != booking_data.event_id:
         raise HTTPException(
@@ -382,16 +845,6 @@ def create_event_booking(
             detail="Show does not belong to the selected venue."
         )
 
-    # -----------------------------------------------------
-    # Validate tickets
-    # -----------------------------------------------------
-
-    if booking_data.number_of_tickets <= 0:
-        raise HTTPException(
-            status_code=400,
-            detail="Number of tickets must be greater than zero."
-        )
-
     if booking_data.number_of_tickets > show.available_tickets:
         raise HTTPException(
             status_code=400,
@@ -401,18 +854,10 @@ def create_event_booking(
             )
         )
 
-    # -----------------------------------------------------
-    # Calculate price
-    # -----------------------------------------------------
-
     total_price = (
         show.ticket_price *
         booking_data.number_of_tickets
     )
-
-    # -----------------------------------------------------
-    # Payment method
-    # -----------------------------------------------------
 
     payment_method = (
         booking_data.payment_method
@@ -427,7 +872,6 @@ def create_event_booking(
         ).first()
 
         if not wallet:
-
             wallet = Wallet(
                 user_id=current_user["id"],
                 balance=0.0
@@ -437,7 +881,6 @@ def create_event_booking(
             db.flush()
 
         if wallet.balance < total_price:
-
             raise HTTPException(
                 status_code=400,
                 detail=(
@@ -464,66 +907,36 @@ def create_event_booking(
         db.add(transaction)
 
     elif payment_method == "demo":
-
         pass
 
     else:
-
         raise HTTPException(
             status_code=400,
-            detail=(
-                "Invalid payment method. "
-                "Use wallet or demo."
-            )
+            detail="Invalid payment method. Use wallet or demo."
         )
-
-    # -----------------------------------------------------
-    # Reduce available tickets
-    # -----------------------------------------------------
 
     show.available_tickets -= (
         booking_data.number_of_tickets
     )
 
-    # -----------------------------------------------------
-    # Create booking
-    # -----------------------------------------------------
-
     booking = EventBooking(
-
         user_id=current_user["id"],
-
         event_id=event.id,
-
         venue_id=venue.id,
-
         show_id=show.id,
-
         customer_name=booking_data.customer_name,
-
         customer_phone=booking_data.customer_phone,
-
         show_date=show.show_date,
-
         show_time=show.show_time,
-
         ticket_type=show.ticket_type,
-
-        number_of_tickets=(
-            booking_data.number_of_tickets
-        ),
-
+        number_of_tickets=booking_data.number_of_tickets,
         total_price=total_price,
-
         payment_method=payment_method,
-
         booking_status="confirmed"
     )
 
     db.add(booking)
-
     db.commit()
-
     db.refresh(booking)
 
     return booking
@@ -541,7 +954,6 @@ def get_my_event_bookings(
     current_user=Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-
     return db.query(EventBooking).filter(
         EventBooking.user_id == current_user["id"]
     ).order_by(
@@ -562,7 +974,6 @@ def get_event_booking(
     current_user=Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-
     booking = db.query(EventBooking).filter(
         EventBooking.id == booking_id,
         EventBooking.user_id == current_user["id"]
@@ -579,8 +990,7 @@ def get_event_booking(
 
 # =========================================================
 # SINGLE EVENT
-# IMPORTANT:
-# KEEP THIS AT THE VERY BOTTOM
+# IMPORTANT: KEEP THIS AT THE VERY BOTTOM
 # =========================================================
 
 @event_router.get(
@@ -592,7 +1002,6 @@ def get_event(
     current_user=Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-
     event = db.query(Event).filter(
         Event.id == event_id
     ).first()

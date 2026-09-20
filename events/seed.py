@@ -8,73 +8,81 @@ def seed_events():
     try:
 
         # =====================================================
-        # EVENTS
+        # DEMO EVENTS
         # =====================================================
 
         events_data = [
+
             {
                 "name": "Sunburn Festival",
                 "category": "Music",
-                "description": "India's biggest electronic dance music festival featuring top DJs and artists.",
+                "description": "A high-energy electronic music festival featuring DJs, live performances and entertainment.",
                 "language": "English",
                 "duration_minutes": 360,
                 "rating": 4.8,
                 "image_url": ""
             },
+
             {
                 "name": "Arijit Singh Live",
                 "category": "Concert",
-                "description": "Experience soulful melodies and live performances by one of India's most loved singers.",
+                "description": "A soulful live music concert featuring romantic and popular Hindi songs.",
                 "language": "Hindi",
                 "duration_minutes": 180,
                 "rating": 4.9,
                 "image_url": ""
             },
+
             {
                 "name": "Comedy Nights Live",
                 "category": "Comedy",
-                "description": "A hilarious evening featuring India's popular stand-up comedians.",
+                "description": "A fun-filled stand-up comedy evening featuring popular Indian comedians.",
                 "language": "Hindi",
                 "duration_minutes": 150,
                 "rating": 4.6,
                 "image_url": ""
             },
+
             {
                 "name": "IPL Fan Fest",
                 "category": "Sports",
-                "description": "A cricket celebration featuring live match screenings, games, music and fan activities.",
+                "description": "A cricket celebration with match screenings, fan activities, games and live entertainment.",
                 "language": "English",
                 "duration_minutes": 300,
                 "rating": 4.7,
                 "image_url": ""
             },
+
             {
                 "name": "Indian Classical Night",
                 "category": "Music",
-                "description": "An elegant evening celebrating India's classical music traditions.",
+                "description": "An elegant evening celebrating Indian classical music and traditional performances.",
                 "language": "Hindi",
                 "duration_minutes": 150,
                 "rating": 4.5,
                 "image_url": ""
             },
+
             {
                 "name": "The Magic Show",
                 "category": "Entertainment",
-                "description": "A spectacular family-friendly magic and illusion show.",
+                "description": "A spectacular family-friendly magic and illusion experience.",
                 "language": "English",
                 "duration_minutes": 120,
                 "rating": 4.4,
                 "image_url": ""
             },
+
             {
                 "name": "Startup & Tech Summit",
                 "category": "Business",
-                "description": "Meet founders, entrepreneurs, developers and technology leaders.",
+                "description": "A technology and startup summit connecting founders, developers and entrepreneurs.",
                 "language": "English",
                 "duration_minutes": 240,
                 "rating": 4.6,
                 "image_url": ""
             },
+
             {
                 "name": "Bollywood Dance Workshop",
                 "category": "Workshop",
@@ -84,6 +92,7 @@ def seed_events():
                 "rating": 4.5,
                 "image_url": ""
             },
+
             {
                 "name": "Rock On Live",
                 "category": "Concert",
@@ -93,15 +102,16 @@ def seed_events():
                 "rating": 4.7,
                 "image_url": ""
             },
+
             {
                 "name": "Food & Culture Festival",
                 "category": "Festival",
-                "description": "Explore delicious Indian food, cultural performances and traditional activities.",
+                "description": "Experience Indian food, cultural performances, traditional activities and entertainment.",
                 "language": "Hindi",
                 "duration_minutes": 300,
                 "rating": 4.6,
                 "image_url": ""
-            },
+            }
         ]
 
         # =====================================================
@@ -118,6 +128,7 @@ def seed_events():
 
             if existing:
                 event = existing
+
             else:
                 event = Event(**data)
                 db.add(event)
@@ -126,70 +137,80 @@ def seed_events():
             events.append(event)
 
         # =====================================================
-        # VENUES
+        # DEMO VENUES
         # =====================================================
 
         venues_data = [
+
             {
                 "name": "Jio World Convention Centre",
                 "city": "Mumbai",
                 "address": "Bandra Kurla Complex, Mumbai",
                 "capacity": 5000
             },
+
             {
                 "name": "Mahalaxmi Racecourse",
                 "city": "Mumbai",
                 "address": "Mahalaxmi, Mumbai",
                 "capacity": 10000
             },
+
             {
                 "name": "Jawaharlal Nehru Stadium",
                 "city": "Delhi",
                 "address": "Lodhi Road, New Delhi",
                 "capacity": 15000
             },
+
             {
                 "name": "Talkatora Indoor Stadium",
                 "city": "Delhi",
                 "address": "President's Estate, New Delhi",
                 "capacity": 3000
             },
+
             {
                 "name": "Phoenix Marketcity",
-                "city": "Bangalore",
-                "address": "Mahadevapura, Bangalore",
+                "city": "Bengaluru",
+                "address": "Mahadevapura, Bengaluru",
                 "capacity": 4000
             },
+
             {
                 "name": "Palace Grounds",
-                "city": "Bangalore",
-                "address": "Jayamahal Road, Bangalore",
+                "city": "Bengaluru",
+                "address": "Jayamahal Road, Bengaluru",
                 "capacity": 12000
             },
+
             {
-                "name": "Hitex Exhibition Centre",
+                "name": "HITEX Exhibition Centre",
                 "city": "Hyderabad",
                 "address": "HITEC City, Hyderabad",
                 "capacity": 8000
             },
+
             {
                 "name": "Shree Shiv Chhatrapati Sports Complex",
                 "city": "Pune",
                 "address": "Balewadi, Pune",
                 "capacity": 10000
             },
+
             {
                 "name": "Balgandharva Rangmandir",
                 "city": "Pune",
                 "address": "Shivajinagar, Pune",
                 "capacity": 2000
             },
+
             {
                 "name": "Ramoji Film City",
                 "city": "Hyderabad",
                 "address": "Abdullapurmet, Hyderabad",
                 "capacity": 15000
-            },
+            }
         ]
 
         # =====================================================
@@ -207,6 +228,7 @@ def seed_events():
 
             if existing:
                 venue = existing
+
             else:
                 venue = EventVenue(**data)
                 db.add(venue)
@@ -217,10 +239,9 @@ def seed_events():
         db.commit()
 
         # =====================================================
-        # SHOWS
+        # MAP EVENTS AND VENUES
         # =====================================================
 
-        # Helper dictionary
         event_map = {
             event.name: event
             for event in events
@@ -231,16 +252,21 @@ def seed_events():
             for venue in venues
         }
 
+        # =====================================================
+        # DEMO SHOWS
+        # All dates are future demo dates
+        # =====================================================
+
         shows_data = [
 
             # -------------------------------------------------
-            # SUNBURN FESTIVAL - MUMBAI
+            # SUNBURN FESTIVAL
             # -------------------------------------------------
 
             {
                 "event": "Sunburn Festival",
                 "venue": "Mahalaxmi Racecourse",
-                "date": "2026-09-20",
+                "date": "2026-09-27",
                 "time": "04:00 PM",
                 "ticket_type": "General",
                 "price": 2499,
@@ -250,7 +276,7 @@ def seed_events():
             {
                 "event": "Sunburn Festival",
                 "venue": "Mahalaxmi Racecourse",
-                "date": "2026-09-21",
+                "date": "2026-09-28",
                 "time": "04:00 PM",
                 "ticket_type": "VIP",
                 "price": 4999,
@@ -258,13 +284,13 @@ def seed_events():
             },
 
             # -------------------------------------------------
-            # ARIJIT SINGH - MUMBAI
+            # ARIJIT SINGH
             # -------------------------------------------------
 
             {
                 "event": "Arijit Singh Live",
                 "venue": "Jio World Convention Centre",
-                "date": "2026-09-15",
+                "date": "2026-09-26",
                 "time": "07:00 PM",
                 "ticket_type": "Silver",
                 "price": 1999,
@@ -274,7 +300,7 @@ def seed_events():
             {
                 "event": "Arijit Singh Live",
                 "venue": "Jio World Convention Centre",
-                "date": "2026-09-15",
+                "date": "2026-09-26",
                 "time": "07:00 PM",
                 "ticket_type": "Gold",
                 "price": 3499,
@@ -282,13 +308,13 @@ def seed_events():
             },
 
             # -------------------------------------------------
-            # COMEDY - DELHI
+            # COMEDY
             # -------------------------------------------------
 
             {
                 "event": "Comedy Nights Live",
                 "venue": "Talkatora Indoor Stadium",
-                "date": "2026-09-12",
+                "date": "2026-09-25",
                 "time": "07:30 PM",
                 "ticket_type": "Regular",
                 "price": 799,
@@ -298,7 +324,7 @@ def seed_events():
             {
                 "event": "Comedy Nights Live",
                 "venue": "Talkatora Indoor Stadium",
-                "date": "2026-09-13",
+                "date": "2026-09-26",
                 "time": "07:30 PM",
                 "ticket_type": "Premium",
                 "price": 1299,
@@ -306,13 +332,13 @@ def seed_events():
             },
 
             # -------------------------------------------------
-            # IPL FAN FEST - DELHI
+            # IPL FAN FEST
             # -------------------------------------------------
 
             {
                 "event": "IPL Fan Fest",
                 "venue": "Jawaharlal Nehru Stadium",
-                "date": "2026-09-18",
+                "date": "2026-09-29",
                 "time": "03:00 PM",
                 "ticket_type": "General",
                 "price": 499,
@@ -322,7 +348,7 @@ def seed_events():
             {
                 "event": "IPL Fan Fest",
                 "venue": "Jawaharlal Nehru Stadium",
-                "date": "2026-09-18",
+                "date": "2026-09-29",
                 "time": "03:00 PM",
                 "ticket_type": "VIP",
                 "price": 1499,
@@ -330,13 +356,13 @@ def seed_events():
             },
 
             # -------------------------------------------------
-            # CLASSICAL NIGHT - PUNE
+            # CLASSICAL NIGHT
             # -------------------------------------------------
 
             {
                 "event": "Indian Classical Night",
                 "venue": "Balgandharva Rangmandir",
-                "date": "2026-09-14",
+                "date": "2026-09-30",
                 "time": "06:30 PM",
                 "ticket_type": "Regular",
                 "price": 599,
@@ -346,7 +372,7 @@ def seed_events():
             {
                 "event": "Indian Classical Night",
                 "venue": "Balgandharva Rangmandir",
-                "date": "2026-09-14",
+                "date": "2026-09-30",
                 "time": "06:30 PM",
                 "ticket_type": "Premium",
                 "price": 999,
@@ -354,13 +380,13 @@ def seed_events():
             },
 
             # -------------------------------------------------
-            # MAGIC SHOW - BANGALORE
+            # MAGIC SHOW
             # -------------------------------------------------
 
             {
                 "event": "The Magic Show",
                 "venue": "Phoenix Marketcity",
-                "date": "2026-09-16",
+                "date": "2026-10-01",
                 "time": "05:00 PM",
                 "ticket_type": "Regular",
                 "price": 499,
@@ -370,7 +396,7 @@ def seed_events():
             {
                 "event": "The Magic Show",
                 "venue": "Phoenix Marketcity",
-                "date": "2026-09-16",
+                "date": "2026-10-01",
                 "time": "08:00 PM",
                 "ticket_type": "Premium",
                 "price": 799,
@@ -378,13 +404,13 @@ def seed_events():
             },
 
             # -------------------------------------------------
-            # STARTUP SUMMIT - HYDERABAD
+            # STARTUP SUMMIT
             # -------------------------------------------------
 
             {
                 "event": "Startup & Tech Summit",
-                "venue": "Hitex Exhibition Centre",
-                "date": "2026-09-22",
+                "venue": "HITEX Exhibition Centre",
+                "date": "2026-10-02",
                 "time": "10:00 AM",
                 "ticket_type": "Standard",
                 "price": 999,
@@ -393,8 +419,8 @@ def seed_events():
 
             {
                 "event": "Startup & Tech Summit",
-                "venue": "Hitex Exhibition Centre",
-                "date": "2026-09-22",
+                "venue": "HITEX Exhibition Centre",
+                "date": "2026-10-02",
                 "time": "10:00 AM",
                 "ticket_type": "VIP",
                 "price": 2499,
@@ -402,27 +428,37 @@ def seed_events():
             },
 
             # -------------------------------------------------
-            # DANCE WORKSHOP - PUNE
+            # DANCE WORKSHOP
             # -------------------------------------------------
 
             {
                 "event": "Bollywood Dance Workshop",
                 "venue": "Balgandharva Rangmandir",
-                "date": "2026-09-17",
+                "date": "2026-10-03",
                 "time": "11:00 AM",
                 "ticket_type": "Workshop Pass",
                 "price": 899,
                 "tickets": 500
             },
 
+            {
+                "event": "Bollywood Dance Workshop",
+                "venue": "Balgandharva Rangmandir",
+                "date": "2026-10-04",
+                "time": "11:00 AM",
+                "ticket_type": "Premium Workshop",
+                "price": 1299,
+                "tickets": 300
+            },
+
             # -------------------------------------------------
-            # ROCK ON - BANGALORE
+            # ROCK ON
             # -------------------------------------------------
 
             {
                 "event": "Rock On Live",
                 "venue": "Palace Grounds",
-                "date": "2026-09-19",
+                "date": "2026-10-05",
                 "time": "07:00 PM",
                 "ticket_type": "General",
                 "price": 1499,
@@ -432,7 +468,7 @@ def seed_events():
             {
                 "event": "Rock On Live",
                 "venue": "Palace Grounds",
-                "date": "2026-09-19",
+                "date": "2026-10-05",
                 "time": "07:00 PM",
                 "ticket_type": "VIP",
                 "price": 2999,
@@ -440,13 +476,13 @@ def seed_events():
             },
 
             # -------------------------------------------------
-            # FOOD FESTIVAL - HYDERABAD
+            # FOOD FESTIVAL
             # -------------------------------------------------
 
             {
                 "event": "Food & Culture Festival",
                 "venue": "Ramoji Film City",
-                "date": "2026-09-23",
+                "date": "2026-10-06",
                 "time": "12:00 PM",
                 "ticket_type": "General",
                 "price": 699,
@@ -456,12 +492,12 @@ def seed_events():
             {
                 "event": "Food & Culture Festival",
                 "venue": "Ramoji Film City",
-                "date": "2026-09-23",
+                "date": "2026-10-06",
                 "time": "05:00 PM",
                 "ticket_type": "Premium",
                 "price": 1199,
                 "tickets": 3000
-            },
+            }
         ]
 
         # =====================================================
@@ -475,6 +511,17 @@ def seed_events():
 
             event = event_map[data["event"]]
             venue = venue_map[data["venue"]]
+
+            # Safety check:
+            # Tickets cannot exceed venue capacity
+            if data["tickets"] > venue.capacity:
+                print(
+                    f"⚠️ Skipping {data['event']} - "
+                    f"{data['ticket_type']} because tickets "
+                    f"exceed venue capacity."
+                )
+                skipped_shows += 1
+                continue
 
             existing = db.query(EventShow).filter(
                 EventShow.event_id == event.id,
@@ -510,7 +557,7 @@ def seed_events():
 
         print()
         print("=" * 60)
-        print("🎟️ TRAVELX EVENTS SEED COMPLETED")
+        print("🎟️ TRAVELX EVENTS DEMO SEED COMPLETED")
         print("=" * 60)
 
         print(f"🎤 Events       : {len(events)}")
@@ -519,7 +566,9 @@ def seed_events():
         print(f"⏭️ Shows Skipped: {skipped_shows}")
 
         print("=" * 60)
-        print("✅ Event database is ready!")
+        print("✅ Demo event database is ready!")
+        print("⚠️ Data is synthetic/demo data.")
+        print("⚠️ It is NOT real-time event inventory.")
         print("=" * 60)
         print()
 
@@ -528,12 +577,13 @@ def seed_events():
         db.rollback()
 
         print()
+        print("=" * 60)
         print("❌ ERROR WHILE SEEDING EVENTS")
+        print("=" * 60)
         print(e)
         print()
 
     finally:
-
         db.close()
 
 
