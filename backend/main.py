@@ -92,11 +92,3 @@ def health_check():
         "status": "healthy",
         "service": "TRAVELX API"
     }
-@app.get("/debug/db")
-def debug_db():
-    return {
-        "database": engine.url.database,
-        "host": engine.url.host,
-        "username": engine.url.username,
-        "driver": engine.url.drivername
-    }
